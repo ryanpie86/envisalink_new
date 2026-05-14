@@ -187,7 +187,7 @@ class EnvisalinkClient:
         except asyncio.exceptions.TimeoutError:
             _LOGGER.error("Timed out connecting to the envisalink at %s", self._alarmPanel.host)
             if not self._shutdown:
-                self._alarmPanel._loginTimeoutCallback(False)
+                self._alarmPanel._loginTimeoutCallback()
             await self.disconnect()
         except ConnectionResetError:
             _LOGGER.error(
