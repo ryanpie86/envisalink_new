@@ -5,6 +5,7 @@ import time
 from enum import Enum
 
 from .const import (
+    PROTOCOL_DEBUG,
     STATE_CHANGE_KEYPAD,
     STATE_CHANGE_PARTITION,
     STATE_CHANGE_ZONE,
@@ -137,7 +138,7 @@ class EnvisalinkClient:
 
                         data = data.decode("ascii")
                         _LOGGER.debug("{---------------------------------------")
-                        _LOGGER.debug(str.format("RX < {0}", data))
+                        _LOGGER.log(PROTOCOL_DEBUG, "RX < %r", data)
 
                         unprocessed_data = self.process_data(unprocessed_data + data)
                         _LOGGER.debug("}---------------------------------------")
@@ -241,7 +242,7 @@ class EnvisalinkClient:
         # Scrub the password and alarm code if necessary
         if not logData:
             logData = self.scrub_sensitive_data(data)
-        _LOGGER.debug("TX > %s", str(logData))
+        _LOGGER.log(PROTOCOL_DEBUG, "TX > %r", logData)
 
         if not self._writer:
             _LOGGER.debug("Unable to send data; not connected.")

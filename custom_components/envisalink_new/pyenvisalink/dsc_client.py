@@ -6,6 +6,7 @@ import re
 import time
 
 from .const import (
+    PROTOCOL_DEBUG,
     STATE_CHANGE_KEYPAD,
     STATE_CHANGE_PARTITION,
     STATE_CHANGE_ZONE,
@@ -113,6 +114,7 @@ class DSCClient(EnvisalinkClient):
     def _parse_frames(self, raw_input: str) -> (list, str):
         frames = raw_input.split('\r\n')
         unprocessed_data = frames.pop()
+        _LOGGER.log(PROTOCOL_DEBUG, "FR < %r / %r", frames, unprocessed_data)
         return (frames, unprocessed_data)
 
     def parseHandler(self, rawInput):

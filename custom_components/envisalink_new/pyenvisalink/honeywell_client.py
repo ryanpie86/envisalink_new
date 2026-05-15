@@ -3,7 +3,7 @@ import logging
 import re
 import time
 
-from .const import STATE_CHANGE_PARTITION, STATE_CHANGE_ZONE, STATE_CHANGE_ZONE_BYPASS
+from .const import PROTOCOL_DEBUG, STATE_CHANGE_PARTITION, STATE_CHANGE_ZONE, STATE_CHANGE_ZONE_BYPASS
 from .envisalink_base_client import EnvisalinkClient
 from .honeywell_envisalinkdefs import (
     Beep_Flags,
@@ -146,6 +146,7 @@ class HoneywellClient(EnvisalinkClient):
                     frames[frame_idx] = frame[idx:]
                     break
 
+        _LOGGER.log(PROTOCOL_DEBUG, "FR < %r / %r", frames, unprocessed_data)
         return (frames, unprocessed_data)
 
     def parseHandler(self, rawInput):
