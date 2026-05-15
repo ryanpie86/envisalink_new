@@ -133,5 +133,26 @@ class TestFrameParsingHoneywell(unittest.TestCase):
         ])
         self.assertEqual(remainder, "")
 
+    def test_percent_sentinel_in_keypad_alpha(self):
+        frames, remainder = self.client._parse_frames(
+            "%00,01,1C08,08,00,BATTERY % at 100$"
+        )
+        self.assertEqual(frames, [
+            "%00,01,1C08,08,00,BATTERY % at 100",
+        ])
+        self.assertEqual(remainder, "")
+
+    def test_dollar_sign_sentinel_in_keypad_alpha(self):
+        frames, remainder = self.client._parse_frames(
+            "%00,01,1C08,08,00,MAKING $ HERE$\r\n"
+            "%02,03000000$\r\n"
+        )
+        self.assertEqual(frames, [
+            "%00,01,1C08,08,00,MAKING ",
+            " HERE",
+            "%02,03000000"
+        ])
+        self.assertEqual(remainder, "\r\n")
+
 if __name__ == "__main__":
     unittest.main()
