@@ -136,9 +136,13 @@ class EnvisalinkClient:
                                 await self.disconnect()
                             break
 
-                        data = data.decode("ascii")
                         _LOGGER.debug("{---------------------------------------")
                         _LOGGER.log(PROTOCOL_DEBUG, "RX < %r", data)
+
+                        # The Honeywell/Ademco devices can occassionally have bus corruption causing
+                        # invalid characters to be present. We should still get valid frames though so
+                        # just strip out any invalid characters.
+                        data = data.decode("ascii", errors='ignore')
 
                         unprocessed_data = self.process_data(unprocessed_data + data)
                         _LOGGER.debug("}---------------------------------------")
