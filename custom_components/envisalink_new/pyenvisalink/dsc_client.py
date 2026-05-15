@@ -110,41 +110,46 @@ class DSCClient(EnvisalinkClient):
             code,
         )
 
+    def _parse_frames(self, raw_input: str) -> (list, str):
+        frames = raw_input.split('\r\n')
+        unprocessed_data = frames.pop()
+        return (frames, unprocessed_data)
+
     def parseHandler(self, rawInput):
         """When the envisalink contacts us- parse out which command and data."""
-        cmd = {}
-        dataoffset = 0
-        if rawInput != "":
-            if re.match(r"\d\d:\d\d:\d\d\s", rawInput):
-                dataoffset = dataoffset + 9
-            code = rawInput[dataoffset : dataoffset + 3]
-            cmd["code"] = code
-            cmd["data"] = rawInput[dataoffset + 3 :][:-2]
+        frames, unprocessed_data= self._parse_frames(rawInput)
 
-            try:
-                # Interpret the login command further to see what our handler is.
-                if evl_ResponseTypes[code]["handler"] == "login":
-                    if cmd["data"] == "3":
-                        handler = "login"
-                    elif cmd["data"] == "2":
-                        handler = "login_timeout"
-                    elif cmd["data"] == "1":
-                        handler = "login_success"
-                    elif cmd["data"] == "0":
-                        handler = "login_failure"
+        commands = []
+        for frame in frames:
+            cmd = {}
+            dataoffset = 0
+            if frame:
+                if re.match(r"\d\d:\d\d:\d\d\s", frame):
+                    dataoffset = dataoffset + 9
+                code = frame[dataoffset : dataoffset + 3]
+                cmd["code"] = code
+                cmd["data"] = frame[dataoffset + 3 :][:-2]
 
-                    cmd["handler"] = "handle_%s" % handler
-                else:
+                try:
                     cmd["handler"] = "handle_%s" % evl_ResponseTypes[code]["handler"]
-                cmd["state_change"] = evl_ResponseTypes[code].get("state_change", False)
-            except KeyError:
-                _LOGGER.debug(str.format("No handler defined in config for {0}, skipping...", code))
+                    cmd["state_change"] = evl_ResponseTypes[code].get("state_change", False)
+                    commands.append(cmd)
+                except KeyError:
+                    _LOGGER.debug(str.format("No handler defined in config for {0}, skipping...", code))
 
-        return cmd
+        return (commands, unprocessed_data)
 
     def handle_login(self, code, data):
-        """When the envisalink asks us for our password- send it."""
-        self.create_internal_task(self.queue_login_response(), name="queue_login_response")
+        """Interpret the login command further to see what our handler is."""
+        if data == "3":
+            # When the envisalink asks us for our password- send it.
+            self.create_internal_task(self.queue_login_response(), name="queue_login_response")
+        elif data == "2":
+            self.handle_login_timeout(code, data)
+        elif data == "1":
+            self.handle_login_success(code, data)
+        elif data == "0":
+            self.handle_login_failure(code, data)
 
     async def queue_login_response(self):
         self._loginEvent.clear()

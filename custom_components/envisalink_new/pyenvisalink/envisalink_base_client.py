@@ -114,11 +114,12 @@ class EnvisalinkClient:
 
                 if self._reader and self._writer:
                     # Connected to EVL; start reading data from the connection
+                    unprocessed_data = ""
                     while not self._shutdown and self._reader:
                         _LOGGER.debug("Waiting for data from EVL")
                         try:
                             data = await asyncio.wait_for(
-                                self._reader.readuntil(separator=b"\n"), 5
+                                self._reader.read(n=512), 5
                             )
                         except asyncio.exceptions.TimeoutError:
                             if not self._loggedin and ((time.time() - self._connect_time) > self._alarmPanel.connection_timeout):
@@ -138,7 +139,7 @@ class EnvisalinkClient:
                         _LOGGER.debug("{---------------------------------------")
                         _LOGGER.debug(str.format("RX < {0}", data))
 
-                        self.process_data(data.strip())
+                        unprocessed_data = self.process_data(unprocessed_data + data)
                         _LOGGER.debug("}---------------------------------------")
 
             except Exception as ex:
@@ -313,36 +314,40 @@ class EnvisalinkClient:
         """Public method to activate the selected command output"""
         raise NotImplementedError()
 
-    def parseHandler(self, rawInput):
+    def parseHandler(self, rawInput) -> (list, str):
         """When the envisalink contacts us- parse out which command and data."""
         raise NotImplementedError()
 
     def process_data(self, data) -> str:
-        cmd = self.parseHandler(data)
+        commands, unprocessed_data = self.parseHandler(data)
 
-        result = None
-        try:
-            _LOGGER.debug(
-                str.format(
-                    "calling handler: {0} for code: {1} with data: {2}",
-                    cmd["handler"],
-                    cmd["code"],
-                    cmd["data"],
+        for cmd in commands:
+            result = None
+            try:
+                _LOGGER.debug(
+                    str.format(
+                        "calling handler: {0} for code: {1} with data: {2}",
+                        cmd["handler"],
+                        cmd["code"],
+                        cmd["data"],
+                    )
                 )
-            )
-            handlerFunc = getattr(self, cmd["handler"])
-            result = handlerFunc(cmd["code"], cmd["data"])
+                handlerFunc = getattr(self, cmd["handler"])
+                result = handlerFunc(cmd["code"], cmd["data"])
 
-        except (AttributeError, TypeError, KeyError) as err:
-            _LOGGER.debug("No handler configured for evl command.")
+            except (AttributeError, TypeError, KeyError) as err:
+                _LOGGER.debug("No handler configured for evl command.")
 
-        try:
-            _LOGGER.debug("Invoking state change callbacks")
-            if result and cmd["state_change"]:
-                self.handle_state_change_callbacks(result)
+            try:
+                _LOGGER.debug("Invoking state change callbacks")
+                if result and cmd["state_change"]:
+                    self.handle_state_change_callbacks(result)
 
-        except (AttributeError, TypeError, KeyError) as ex:
-            _LOGGER.debug("No callback configured for evl command. %r", ex)
+            except (AttributeError, TypeError, KeyError) as ex:
+                _LOGGER.debug("No callback configured for evl command. %r", ex)
+
+        # Return any data for incomplete frames
+        return unprocessed_data
 
     def handle_state_change_callbacks(self, updates):
         for change_type, values in updates.items():
