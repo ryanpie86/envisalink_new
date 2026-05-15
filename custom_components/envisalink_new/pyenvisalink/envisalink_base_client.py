@@ -129,6 +129,10 @@ class EnvisalinkClient:
                             continue
                         except asyncio.IncompleteReadError:
                             data = None
+                        except (ConnectionResetError, OSError, BrokenPipeError) as ex:
+                            _LOGGER.warning("Connection error while reading data: %s", ex)
+                            await self.disconnect()
+                            break
 
                         if not data:
                             if self._writer:
@@ -153,7 +157,7 @@ class EnvisalinkClient:
 
             # Lost connection so reattempt connection in a bit
             if not self._shutdown:
-                _LOGGER.error("Reconnection attempt in %ds", self._reconnect_time)
+                _LOGGER.warning("Reconnection attempt in %ds", self._reconnect_time)
                 await asyncio.sleep(self._reconnect_time)
 
         await self.disconnect()
@@ -168,7 +172,7 @@ class EnvisalinkClient:
                 await action()
 
             now = time.time()
-            await asyncio.sleep(next_send - now)
+            await asyncio.sleep(max(0, next_send - now))
 
     async def connect(self):
         _LOGGER.info(
@@ -187,7 +191,6 @@ class EnvisalinkClient:
             _LOGGER.info("Connection Successful!")
 
             self._alarmPanel.handle_connection_status(True)
-            self._reconnect_time = _RECONNECT_MIN_TIME
             self._connect_time = time.time()
             return
         except asyncio.exceptions.TimeoutError:
@@ -206,6 +209,9 @@ class EnvisalinkClient:
             await self.disconnect()
 
         # Increase time before reconnect attempt
+        self._backoff_reconnect_time()
+
+    def _backoff_reconnect_time(self):
         self._reconnect_time *= 2
         if self._reconnect_time > _RECONNECT_MAX_TIME:
             self._reconnect_time = _RECONNECT_MIN_TIME
@@ -231,15 +237,24 @@ class EnvisalinkClient:
         # Tear down the connection
         try:
             writer.close()
-            await writer.wait_closed()
+            await asyncio.wait_for(writer.wait_closed(), timeout=5)
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timed out waiting for connection to close.")
+        except (ConnectionResetError, BrokenPipeError, OSError) as ex:
+            # Socket was already closed by the remote end; not an error.
+            if not self._shutdown:
+                _LOGGER.debug("Connection already closed by remote end: %s", ex)
         except Exception as ex:
             if not self._shutdown:
-                _LOGGER.error("Exception while closing connection: %s", ex)
+                _LOGGER.warning("Exception while closing connection: %s", ex)
 
         # Clean out all the failed commands from the queue
         self._commandEvent.set()
 
         self._alarmPanel.handle_connection_status(False)
+
+        # Increase time before reconnect attempt
+        self._backoff_reconnect_time()
 
     async def send_data(self, data, logData=None):
         """Raw data send- just make sure it's encoded properly and logged."""
@@ -415,6 +430,7 @@ class EnvisalinkClient:
     def handle_login_success(self, code, data):
         """Handler for when the envisalink accepts our credentials."""
         self._loggedin = True
+        self._reconnect_time = _RECONNECT_MIN_TIME
         _LOGGER.debug("Password accepted, session created")
         self._alarmPanel.handle_login_success()
 
