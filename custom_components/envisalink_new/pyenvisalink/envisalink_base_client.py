@@ -327,29 +327,37 @@ class EnvisalinkClient:
         commands, unprocessed_data = self.parseHandler(data)
 
         for cmd in commands:
-            result = None
+            try:
+                handlerFunc = getattr(self, cmd["handler"])
+            except (AttributeError, KeyError) as err:
+                _LOGGER.debug("No handler configured for evl command: %s", cmd.get("code", "?"))
+                continue
+
             try:
                 _LOGGER.debug(
-                    str.format(
-                        "calling handler: {0} for code: {1} with data: {2}",
-                        cmd["handler"],
-                        cmd["code"],
-                        cmd["data"],
-                    )
+                    "calling handler: %s for code: '%s' with data: '%s'",
+                    cmd["handler"],
+                    cmd["code"],
+                    cmd["data"],
                 )
-                handlerFunc = getattr(self, cmd["handler"])
+                exception_path = cmd["handler"]
                 result = handlerFunc(cmd["code"], cmd["data"])
 
-            except (AttributeError, TypeError, KeyError) as err:
-                _LOGGER.debug("No handler configured for evl command.")
-
-            try:
-                _LOGGER.debug("Invoking state change callbacks")
-                if result and cmd["state_change"]:
+                if result and cmd.get("state_change"):
+                    _LOGGER.debug("Invoking state change callbacks")
+                    exception_path = "state change callback"
                     self.handle_state_change_callbacks(result)
 
-            except (AttributeError, TypeError, KeyError) as ex:
-                _LOGGER.debug("No callback configured for evl command. %r", ex)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Error in %s for code '%s' data '%s': %s: %s",
+                    exception_path,
+                    cmd.get("code", "?"),
+                    cmd.get("data", "?"),
+                    type(err).__name__,
+                    err,
+                )
+                continue
 
         # Return any data for incomplete frames
         return unprocessed_data
