@@ -17,7 +17,6 @@ class MigrateUniqueIDFlow(RepairsFlow):
 
     def __init__(self, data: dict[str, str]) -> None:
         """Initialize."""
-        LOGGER.error(f"MigrateUniqueIDFlow: data={data}")
         self.description_placeholders: dict[str, str] = {
             "config_entry_title": data["config_entry_title"],
             "new_unique_id": data["new_unique_id"],
@@ -49,7 +48,6 @@ class MigrateUniqueIDFlow(RepairsFlow):
                 self.hass.config_entries.async_schedule_reload(config_entry.entry_id)
             return self.async_create_entry(data={})
 
-        LOGGER.error(f"desc_place: {self.description_placeholders}")
         return self.async_show_form(
             step_id="confirm",
             description_placeholders=self.description_placeholders,
