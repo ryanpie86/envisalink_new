@@ -75,3 +75,17 @@ discover_zone_info:
       default: false
       selector:
         boolean:
+    remove_unused:
+      name: Remove unused zones from existing configuration
+      description: >
+        If true, also remove any zone that scans back as zone type "00"
+        (Not Used) from this integration's configured zone_set (and clear
+        its now-orphaned name/type override, if any), so an entity stops
+        being created for it. Zones that come back "00" are otherwise left
+        untouched even if apply is true -- there's simply nothing to write
+        for them. Requires apply: true; there's nothing to remove on a dry
+        run.
+      required: false
+      default: false
+      selector:
+        boolean:

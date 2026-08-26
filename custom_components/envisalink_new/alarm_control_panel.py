@@ -25,6 +25,7 @@ from .const import (
     CONF_PARTITIONNAME,
     CONF_PARTITIONS,
     CONF_SHOW_KEYPAD,
+    CONF_ZONE_SET,
     CONF_ZONENAME,
     CONF_ZONES,
     CONF_ZONETYPE,
@@ -33,6 +34,7 @@ from .const import (
     DEFAULT_PANIC,
     DEFAULT_PARTITION_SET,
     DEFAULT_SHOW_KEYPAD,
+    DEFAULT_ZONE_SET,
     DOMAIN,
     HONEYWELL_ARM_MODE_INSTANT_VALUE,
     LOGGER,
@@ -40,7 +42,12 @@ from .const import (
     SHOW_KEYPAD_DISARM_VALUE,
     SHOW_KEYPAD_NEVER_VALUE,
 )
-from .helpers import find_yaml_info, generate_entity_setup_info, parse_range_string
+from .helpers import (
+    find_yaml_info,
+    generate_entity_setup_info,
+    generate_range_string,
+    parse_range_string,
+)
 from .models import EnvisalinkDevice
 from .pyenvisalink.const import (
     PANEL_TYPE_HONEYWELL,
@@ -68,6 +75,7 @@ SERVICE_SCHEMA = vol.Schema(
 
 SERVICE_DISCOVER_ZONE_INFO = "discover_zone_info"
 ATTR_APPLY = "apply"
+ATTR_REMOVE_UNUSED = "remove_unused"
 
 
 async def async_setup_entry(
@@ -138,6 +146,7 @@ async def async_setup_entry(
             SERVICE_DISCOVER_ZONE_INFO,
             {
                 vol.Optional(ATTR_APPLY, default=False): cv.boolean,
+                vol.Optional(ATTR_REMOVE_UNUSED, default=False): cv.boolean,
             },
             "async_discover_zone_info",
         )
@@ -308,7 +317,7 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             self.code_or_default_code(code), self._partition_number, pgm
         )
 
-    async def async_discover_zone_info(self, apply=False):
+    async def async_discover_zone_info(self, apply=False, remove_unused=False):
         """Read zone names/types back from the panel's own installer programming.
 
         See pyenvisalink/honeywell_zone_discovery.py for exactly what this
@@ -330,6 +339,15 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         names/types into this integration's config entry (equivalent to
         what the original YAML `zones:` config used to do), which reloads
         the integration so the new names take effect.
+
+        With apply=True, a zone that scans back as zone type "00" (Not
+        Used) is otherwise left completely alone -- it has no name/type to
+        write, so nothing about it changes even if it's already in
+        `zone_set`. Pass remove_unused=True (requires apply=True) to
+        additionally drop any zone that comes back "00" from `zone_set`
+        (and clear its now-orphaned name/type override, if any), so an
+        entity stops being created for it. Requires apply=True since
+        remove_unused has nothing to do on a dry run.
         """
         config_entry = self._controller.config_entry
         installer_code = config_entry.data.get(CONF_INSTALLER_CODE)
@@ -339,6 +357,10 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
                 "the integration's Basic options page (Settings > Devices & "
                 "services > this integration > Configure > Basic) before using "
                 "zone discovery."
+            )
+        if remove_unused and not apply:
+            raise HomeAssistantError(
+                "remove_unused requires apply: true -- there's nothing to remove on a dry run."
             )
 
         try:
@@ -357,6 +379,19 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         ]
         LOGGER.info("Zone discovery results:\n%s", "\n".join(summary_lines))
 
+        removed_zones: set[int] = set()
+        if remove_unused:
+            zone_spec = config_entry.data.get(CONF_ZONE_SET, DEFAULT_ZONE_SET)
+            configured_zones = set(
+                parse_range_string(
+                    zone_spec, min_val=1, max_val=self._controller.controller.max_zones
+                )
+                or []
+            )
+            removed_zones = configured_zones & {
+                zone for zone, info in results.items() if info["zone_type"] == "00"
+            }
+
         await self.hass.services.async_call(
             "persistent_notification",
             "create",
@@ -366,6 +401,11 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
                 "message": (
                     ("Applied to zone names/types below.\n\n" if apply else "")
                     + ("Dry run -- nothing was changed. Pass apply: true to save these.\n\n" if not apply else "")
+                    + (
+                        f"Removed unused zone(s) from zone_set: {sorted(removed_zones)}\n\n"
+                        if removed_zones
+                        else ""
+                    )
                     + "\n".join(summary_lines)
                 ),
             },
@@ -385,6 +425,27 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
                 new_zone_data[str(zone)] = existing
 
             new_data = dict(config_entry.data)
+
+            if removed_zones:
+                for zone in removed_zones:
+                    new_zone_data.pop(str(zone), None)
+
+                zone_spec = config_entry.data.get(CONF_ZONE_SET, DEFAULT_ZONE_SET)
+                configured_zones = set(
+                    parse_range_string(
+                        zone_spec, min_val=1, max_val=self._controller.controller.max_zones
+                    )
+                    or []
+                )
+                new_data[CONF_ZONE_SET] = (
+                    generate_range_string(configured_zones - removed_zones) or DEFAULT_ZONE_SET
+                )
+                LOGGER.info(
+                    "Zone discovery: removed %d unused zone(s) from zone_set: %s",
+                    len(removed_zones),
+                    sorted(removed_zones),
+                )
+
             new_data[CONF_ZONES] = new_zone_data
             self.hass.config_entries.async_update_entry(config_entry, data=new_data)
             LOGGER.info(
