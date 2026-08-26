@@ -25,6 +25,7 @@ My original intent was to submit these changes back HA core to update the aging 
   - Sequential queueing of commands to the EVL including retry on errors (which applicable) and timeouts
   - Ability to query EVL firmware version and MAC address
   - Update of asyncio network handling to use Streams rather than low-level APIs
+- Honeywell/**Vista-20P** zone auto-discovery: reads each zone's type (and, in a future release, name) directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with a discovery-mode dropdown and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below.
 - Many other small feature additions and bug fixes.
 
 ## Installation
