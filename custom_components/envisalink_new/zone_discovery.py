@@ -33,6 +33,7 @@ async def async_run_zone_discovery(
     apply: bool = False,
     remove_unused: bool = False,
     include_names: bool = False,
+    skip_unused_alpha: bool = True,
 ) -> dict[int, dict]:
     """Read zone names/types back from the panel's own installer programming.
 
@@ -51,10 +52,18 @@ async def async_run_zone_discovery(
 
     include_names (default False) additionally walks *82 to read each
     zone's alpha descriptor as its name, on top of the *56 zone-type walk
-    that always runs. Unlike the *56 walk, this path has NOT been validated
-    against real hardware yet -- see
-    `honeywell_zone_discovery.HoneywellZoneDiscovery._read_zone_descriptors`.
-    Test with apply=False first.
+    that always runs. See
+    `honeywell_zone_discovery.HoneywellZoneDiscovery._read_zone_descriptors`
+    for the full protocol/safety details. Test with apply=False first.
+
+    skip_unused_alpha (default True, only matters when include_names is
+    also True): skip the *82 alpha read for any zone that already came
+    back zone type "00" (Not Used) from the *56 walk. There's no name
+    worth reading for a zone that isn't in use, and skipping it cuts scan
+    time and time spent in installer programming mode -- both meaningful
+    across a full 1-64 zone scan where most zones are typically unused.
+    Set this to False if you specifically want to see a stray leftover
+    descriptor on a zone you're about to consider for remove_unused.
 
     With apply=False (the default), results are only logged and posted as a
     persistent notification -- nothing about your configured zone
@@ -86,7 +95,11 @@ async def async_run_zone_discovery(
 
     try:
         results = await controller.controller.discover_zone_info(
-            installer_code, partition_number, FULL_ZONE_SCAN_RANGE, include_names
+            installer_code,
+            partition_number,
+            FULL_ZONE_SCAN_RANGE,
+            include_names,
+            skip_unused_alpha,
         )
     except ZoneDiscoveryError as err:
         LOGGER.error("Zone discovery failed: %s", err)

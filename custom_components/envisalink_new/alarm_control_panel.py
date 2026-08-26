@@ -309,7 +309,11 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         )
 
     async def async_discover_zone_info(
-        self, apply=False, remove_unused=False, include_names=False
+        self,
+        apply=False,
+        remove_unused=False,
+        include_names=False,
+        skip_unused_alpha=True,
     ):
         """Read zone names/types back from the panel's own installer programming.
 
@@ -343,9 +347,10 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         remove_unused has nothing to do on a dry run.
 
         Pass include_names=True to also read each zone's *82 alpha
-        descriptor as its name. Unlike the *56 type walk, this path has NOT
-        been validated against real hardware yet -- see
-        zone_discovery.async_run_zone_discovery's docstring.
+        descriptor as its name. skip_unused_alpha (default True) then
+        skips that *82 read for any zone already known "00" (Not Used)
+        from the *56 walk -- see zone_discovery.async_run_zone_discovery's
+        docstring.
 
         This runs the same discovery walk shared with the "Discover Zone
         Info" button entity -- see zone_discovery.py.
@@ -358,6 +363,7 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             apply=apply,
             remove_unused=remove_unused,
             include_names=include_names,
+            skip_unused_alpha=skip_unused_alpha,
         )
 
     def _is_night_mode(self) -> bool:

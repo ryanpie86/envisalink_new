@@ -24,6 +24,7 @@ from .const import (
     ZONE_DISCOVERY_APPLY_SUFFIX,
     ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
     ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
+    ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX,
 )
 from .helpers import (
     build_zone_to_partition_map,
@@ -102,6 +103,14 @@ async def async_setup_entry(
                 controller,
                 f"{controller.unique_id}_{ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX}",
                 "Remove Unused Zones",
+            )
+        )
+        entities.append(
+            EnvisalinkZoneDiscoveryToggle(
+                controller,
+                f"{controller.unique_id}_{ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX}",
+                "Only Scan Alpha for Active Zones",
+                default_is_on=True,
             )
         )
 
@@ -227,34 +236,47 @@ class EnvisalinkChimeSwitch(EnvisalinkDevice, SwitchEntity, RestoreEntity):
 
 
 class EnvisalinkZoneDiscoveryToggle(EnvisalinkZoneScanDevice, SwitchEntity):
-    """One of the three toggles the "Discover Zone Info" button reads at press time.
+    """One of the toggles the "Discover Zone Info" button reads at press time.
 
-    Together (Apply Changes / Include Names / Remove Unused Zones) these
-    replace what used to be a single 5-option mode dropdown, since these
-    three plain on/off toggles cover the same 5 meaningful combinations
-    (all three sub-options are ignored -- effectively a no-op preview --
-    whenever Apply Changes is off) without a fixed enum of combo strings
-    that would need a new entry for every future option. See button.py's
-    `EnvisalinkZoneDiscoveryButton._current_settings`.
+    Apply Changes / Include Names / Remove Unused Zones replace what used
+    to be a single 5-option mode dropdown, since these three plain on/off
+    toggles cover the same 5 meaningful combinations (all three
+    sub-options are ignored -- effectively a no-op preview -- whenever
+    Apply Changes is off) without a fixed enum of combo strings that would
+    need a new entry for every future option. See button.py's
+    `EnvisalinkZoneDiscoveryButton._current_settings`. Only Scan Alpha for
+    Active Zones (added 2026-08-26) is a fourth, independent toggle: a
+    pure *82 scan-time optimization, unrelated to the apply/preview
+    distinction the other three are about.
 
     None of these persist across an HA restart -- they always come back up
-    off, so a forgotten "on" toggle can't silently carry over into a scan
-    run after a restart. This is deliberate, not an oversight.
+    at their default (`default_is_on`), so a forgotten toggle can't
+    silently carry over into a scan run after a restart. This is
+    deliberate, not an oversight.
     """
 
     _attr_has_entity_name = True
     _attr_should_poll = False
-    _attr_is_on = False
 
     def __init__(
         self,
         controller,
         unique_id: str,
         name: str,
+        default_is_on: bool = False,
     ) -> None:
-        """Initialize one zone-discovery toggle switch."""
+        """Initialize one zone-discovery toggle switch.
+
+        default_is_on: state this toggle comes back up as after every HA
+        restart (it never persists). False for Apply Changes/Include
+        Names/Remove Unused Zones -- a bare press with everything off must
+        stay a safe no-op preview. True for Only Scan Alpha for Active
+        Zones, since it's a pure optimization with no safety trade-off, so
+        there's no reason to default it off.
+        """
         self._attr_unique_id = unique_id
         self._attr_name = name
+        self._attr_is_on = default_is_on
         super().__init__(name, controller, None, None)
 
     async def async_turn_on(self, **kwargs: Any) -> None:

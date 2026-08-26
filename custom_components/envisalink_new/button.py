@@ -20,6 +20,7 @@ from .const import (
     ZONE_DISCOVERY_APPLY_SUFFIX,
     ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
     ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
+    ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX,
 )
 from .helpers import parse_range_string
 from .models import EnvisalinkDevice, EnvisalinkZoneScanDevice
@@ -125,16 +126,19 @@ class EnvisalinkPanicButton(EnvisalinkDevice, ButtonEntity):
 class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
     """Button that runs a Honeywell/Vista zone-discovery scan.
 
-    Lives on the "Zone Scan" sub-device next to three paired toggle
+    Lives on the "Zone Scan" sub-device next to four paired toggle
     switches (switch.py): Apply Changes, Include Names, Remove Unused
-    Zones. A button entity can't prompt for apply/include_names/
-    remove_unused when pressed, so instead this reads whatever those three
-    switches are currently set to at press time -- flip the ones you want
-    first, then press this button to run it. With everything off (the
-    default) this is a no-op preview. Results are posted as a persistent
-    notification either way. The `envisalink_new.discover_zone_info`
-    service remains available too, for automations/scripts that want to
-    set those fields directly without touching the switches.
+    Zones, and Only Scan Alpha for Active Zones. A button entity can't
+    prompt for apply/include_names/remove_unused/skip_unused_alpha when
+    pressed, so instead this reads whatever those switches are currently
+    set to at press time -- flip the ones you want first, then press this
+    button to run it. With Apply/Include Names/Remove Unused all off (the
+    default for those three) this is a no-op preview; Only Scan Alpha for
+    Active Zones defaults on regardless, since it's just a scan-time
+    optimization. Results are posted as a persistent notification either
+    way. The `envisalink_new.discover_zone_info` service remains available
+    too, for automations/scripts that want to set those fields directly
+    without touching the switches.
     """
 
     _attr_has_entity_name = True
@@ -153,21 +157,32 @@ class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
         self._entry = entry
         super().__init__("Discover Zone Info", controller, None, None)
 
-    def _switch_is_on(self, suffix: str) -> bool:
-        """Look up one paired toggle switch's current state by suffix."""
+    def _switch_is_on(self, suffix: str, default: bool = False) -> bool:
+        """Look up one paired toggle switch's current state by suffix.
+
+        `default` is only used if the switch entity can't be found at all
+        (e.g. this is somehow called before switch.py's entities have been
+        set up) -- it should match that switch's own default_is_on so
+        behavior is consistent either way.
+        """
         registry = er.async_get(self.hass)
         unique_id = f"{self._controller.unique_id}_{suffix}"
         entity_id = registry.async_get_entity_id("switch", DOMAIN, unique_id)
         if not entity_id:
-            return False
+            return default
         state = self.hass.states.get(entity_id)
-        return bool(state) and state.state == "on"
+        if not state:
+            return default
+        return state.state == "on"
 
     async def async_press(self) -> None:
         """Run zone discovery using whatever the toggle switches are set to."""
         apply = self._switch_is_on(ZONE_DISCOVERY_APPLY_SUFFIX)
         include_names = self._switch_is_on(ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX)
         remove_unused = self._switch_is_on(ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX)
+        skip_unused_alpha = self._switch_is_on(
+            ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX, default=True
+        )
 
         # Include Names works independently of Apply Changes on purpose --
         # since *82 name reading is not yet hardware-validated the way *56
@@ -196,6 +211,7 @@ class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
                 apply=apply,
                 remove_unused=remove_unused,
                 include_names=include_names,
+                skip_unused_alpha=skip_unused_alpha,
             )
         except HomeAssistantError as err:
             LOGGER.error("Zone discovery (button) failed: %s", err)

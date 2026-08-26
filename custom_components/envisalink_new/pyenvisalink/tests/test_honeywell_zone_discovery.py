@@ -378,6 +378,75 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertIsNone(results[5]["name"])
         self.assertEqual(results[5]["zone_type"], "03")
 
+    def test_skip_unused_alpha_skips_zone_type_00(self):
+        # skip_unused_alpha=True should leave zone 1 (type 00 -- Not Used)
+        # out of the *82 walk entirely, since there's no zone-number entry
+        # sent for it, but zone 2 (a real type) still gets its normal
+        # "*02"/"8" round trip. Added 2026-08-26 at Ryan's request to cut
+        # scan time on a full 1-64 zone scan, most of which is typically
+        # unused.
+        summary_1 = _summary("Zn ZT P RC HW:RT", "01 00 1 10 EL:1 ")  # type 00
+        summary_2 = _summary("Zn ZT P RC HW:RT", "02 09 1 10 EL:1 ")  # type 09
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",
+                "SET TO CONFIRM?",
+                "OK",
+                summary_1,  # "01*"
+                "Enter Zn Num.   (00=Quit)     02",  # "#"
+                summary_2,  # "02*"
+                "Enter Zn Num.   (00=Quit)     03",  # "#"
+                "MAIN MENU",  # "00" (exit *56)
+                "PROGRAM ALPHA?",  # "*82"
+                "CUSTOM WORDS?",  # "1"
+                "* Zn 02  " + " " * 23,  # "0" -> lands directly on zone 2
+                _descriptor_display(2, "BACK DOOR"),  # "*02"
+                "* Zn 02  " + " " * 23,  # "8"
+                "PROGRAM ALPHA?",  # "*00"
+                "DATA MODE",  # "0"
+                "DATA MODE",  # "*99"
+            ],
+        )
+        discovery = _discovery(client)
+
+        results = _run(
+            discovery.discover(
+                "1234", [1, 2], include_names=True, skip_unused_alpha=True
+            )
+        )
+
+        self.assertNotIn("*01", client.sent)
+        self.assertIn("*02", client.sent)
+        self.assertIsNone(results[1]["name"])
+        self.assertEqual(results[2]["name"], "BACK DOOR")
+
+    def test_skip_unused_alpha_skips_82_entirely_when_all_zones_unused(self):
+        # If every requested zone comes back type 00, there's nothing left
+        # to read a name for at all -- *82 should never even be entered.
+        summary_1 = _summary("Zn ZT P RC HW:RT", "01 00 1 10 EL:1 ")
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",
+                "SET TO CONFIRM?",
+                "OK",
+                summary_1,  # "01*"
+                "MAIN MENU",  # "00" (exit *56)
+                "DATA MODE",  # "*99"
+            ],
+        )
+        discovery = _discovery(client)
+
+        results = _run(
+            discovery.discover(
+                "1234", [1], include_names=True, skip_unused_alpha=True
+            )
+        )
+
+        self.assertNotIn("*82", client.sent)
+        self.assertIsNone(results[1]["name"])
+
     def test_include_names_zone_1_already_selected_does_not_hang(self):
         # Regression test for a real hang against real hardware
         # (2026-08-27, see Ryan's HA debug log): CUSTOM WORDS? -> 0 lands

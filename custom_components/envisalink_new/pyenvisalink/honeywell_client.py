@@ -123,7 +123,12 @@ class HoneywellClient(EnvisalinkClient):
         await self.keypresses_to_partition(1, '%s9' % (code))
 
     async def discover_zone_info(
-        self, installer_code, partition_number, zones, include_names=False
+        self,
+        installer_code,
+        partition_number,
+        zones,
+        include_names=False,
+        skip_unused_alpha=False,
     ):
         """Read back existing zone names/types directly from the panel's own programming.
 
@@ -134,13 +139,17 @@ class HoneywellClient(EnvisalinkClient):
         for the full protocol details and safety model; this refuses to run
         unless the partition is disarmed, and always exits programming mode
         when done, including on error.
+
+        skip_unused_alpha, if include_names is also True, skips the *82
+        alpha read for any zone already known (from the *56 walk) to be
+        zone type "00" (Not Used) -- see HoneywellZoneDiscovery.discover.
         """
         # Imported locally to avoid a hard dependency on this module for the
         # (much more common) code paths that never touch zone discovery.
         from .honeywell_zone_discovery import HoneywellZoneDiscovery
 
         discovery = HoneywellZoneDiscovery(self, partition_number)
-        return await discovery.discover(installer_code, zones, include_names)
+        return await discovery.discover(installer_code, zones, include_names, skip_unused_alpha)
 
     def _parse_frames(self, raw_input: str) -> (list, str):
         frames = []

@@ -513,27 +513,42 @@ class HoneywellZoneDiscovery:
         return descriptors
 
     async def discover(
-        self, installer_code: str, zones: list[int], include_names: bool = False
+        self,
+        installer_code: str,
+        zones: list[int],
+        include_names: bool = False,
+        skip_unused_alpha: bool = False,
     ) -> dict[int, dict]:
         """Read back type (and optionally name) for each zone in `zones`.
 
         Zone type always comes from the *56 SUMMARY SCREEN walk, confirmed
         against real hardware. Pass include_names=True to also read each
-        zone's *82 alpha descriptor as its "name" -- see
-        `_read_zone_descriptors` for why that path is NOT YET validated
-        against real hardware the way *56 is, and test it cautiously.
+        zone's *82 alpha descriptor as its "name".
+
+        skip_unused_alpha (default False here; the HA-facing layers default
+        this to True -- see zone_discovery.py) only matters when
+        include_names is also True. When set, any zone that came back zone
+        type "00" (Not Used) from the *56 walk is skipped in the *82 pass
+        entirely -- there's no reason to spend keystrokes and panel-side
+        program-mode time reading a name for a zone that isn't in use. Its
+        "name" stays None, same as if include_names were off for that one
+        zone. Zones actually in use are unaffected either way.
 
         Returns {zone_number: {"name": str | None, "zone_type": str | None,
         "zone_type_label": str | None, "device_class": str | None,
         "raw_summary": str | None}}.
         """
         return await asyncio.wait_for(
-            self._discover_inner(installer_code, zones, include_names),
+            self._discover_inner(installer_code, zones, include_names, skip_unused_alpha),
             timeout=OVERALL_TIMEOUT,
         )
 
     async def _discover_inner(
-        self, installer_code: str, zones: list[int], include_names: bool = False
+        self,
+        installer_code: str,
+        zones: list[int],
+        include_names: bool = False,
+        skip_unused_alpha: bool = False,
     ) -> dict[int, dict]:
         results: dict[int, dict] = {}
         await self._enter_program_mode(installer_code)
@@ -564,10 +579,22 @@ class HoneywellZoneDiscovery:
                 await self._await_alpha_change(baseline, timeout=3.0)
 
             if include_names:
-                descriptors = await self._read_zone_descriptors(zones)
-                for zone, name in descriptors.items():
-                    if zone in results:
-                        results[zone]["name"] = name
+                names_zones = zones
+                if skip_unused_alpha:
+                    skipped = [z for z in zones if results.get(z, {}).get("zone_type") == "00"]
+                    names_zones = [z for z in zones if z not in skipped]
+                    if skipped:
+                        _LOGGER.info(
+                            "Zone discovery: skipping *82 alpha read for %d zone(s) "
+                            "already known Not Used (type 00): %s",
+                            len(skipped),
+                            skipped,
+                        )
+                if names_zones:
+                    descriptors = await self._read_zone_descriptors(names_zones)
+                    for zone, name in descriptors.items():
+                        if zone in results:
+                            results[zone]["name"] = name
         finally:
             await self._exit_program_mode()
 

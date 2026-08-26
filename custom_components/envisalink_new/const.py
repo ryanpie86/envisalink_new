@@ -51,18 +51,31 @@ CONF_PANEL_MODEL = "panel_model"
 # PANEL_MODEL_VISTA_20P. See models.EnvisalinkZoneScanDevice.
 ZONE_SCAN_DEVICE_SUFFIX = "zone_scan"
 
-# Three independent toggle switches (see switch.py) that the zone-discovery
+# Four independent toggle switches (see switch.py) that the zone-discovery
 # button (see button.py) reads at press time to decide what to pass to
 # zone_discovery.async_run_zone_discovery. A button entity can't ask for
 # anything when pressed, so pairing it with switches is how this
-# integration lets a UI click choose apply/include_names/remove_unused
-# instead of those only being available via the discover_zone_info service.
-# All default off (a bare press with everything off is a no-op preview),
-# and none persist across an HA restart -- resetting to the safe "preview
-# only" state is deliberate, see docs/zone_discovery.md.
+# integration lets a UI click choose
+# apply/include_names/remove_unused/skip_unused_alpha instead of those
+# only being available via the discover_zone_info service. None persist
+# across an HA restart -- resetting to the same default every restart is
+# deliberate, see docs/zone_discovery.md. Apply Changes, Include Names,
+# and Remove Unused Zones all default OFF (a bare press with everything
+# off is a no-op preview). Only Scan Alpha For Active Zones defaults ON
+# (see ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX below) -- it's a pure
+# scan-time optimization with no safety downside, so the "safe" default
+# and the "recommended" default are the same value here, unlike the other
+# three.
 ZONE_DISCOVERY_APPLY_SUFFIX = "zone_discovery_apply"
 ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX = "zone_discovery_include_names"
 ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX = "zone_discovery_remove_unused"
+# Skips the *82 alpha (name) read for any zone already known, from the
+# *56 walk earlier in the same scan, to be zone type "00" (Not Used).
+# Defaults ON (see switch.py) -- added 2026-08-26 after Ryan asked whether
+# the *82 pass could skip zones with no reason to have a name, to cut
+# down scan time and total time spent in installer programming mode
+# across a full 1-64 zone scan.
+ZONE_DISCOVERY_SKIP_UNUSED_ALPHA_SUFFIX = "zone_discovery_skip_unused_alpha"
 
 
 # Config items used only in the YAML config

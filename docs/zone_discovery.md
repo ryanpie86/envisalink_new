@@ -316,7 +316,7 @@ zone range, and type table would need to branch per model.
 For convenience, a separate **"Zone Scan" device** (its own card/bubble in
 the HA UI, linked back to the alarm panel's device via `via_device` --
 see `models.EnvisalinkZoneScanDevice`) is created whenever the panel type
-is Honeywell *and* the configured panel model is Vista-20P. It holds four
+is Honeywell *and* the configured panel model is Vista-20P. It holds five
 entities:
 
 * **Apply Changes**, **Include Names**, **Remove Unused Zones**
@@ -328,24 +328,38 @@ entities:
   giving the 4 meaningful "apply" combinations without needing a fixed
   enum of combo strings that would need a new entry for every future
   option.
-* **Discover Zone Info** (`button.py`) -- pressing it looks up all three
+* **Only Scan Alpha for Active Zones** (`switch.py`, added 2026-08-26) --
+  a fourth, independent toggle, defaulting **on** (unlike the three
+  above). When on and Include Names is also on, any zone that already
+  came back zone type "00" (Not Used) from the *56 walk is skipped in the
+  *82 pass entirely -- there's no name worth reading for a zone that
+  isn't in use, and skipping cuts real scan time and time spent in
+  installer programming mode across a full 1-64 zone scan (most zones on
+  a typical system are unused). Defaults on because it's a pure
+  optimization with no safety trade-off, unlike the other three toggles.
+  Turn it off if you specifically want to see a stray leftover descriptor
+  on an unused zone -- e.g. to sanity-check before deciding whether to
+  turn on Remove Unused Zones.
+* **Discover Zone Info** (`button.py`) -- pressing it looks up all four
   switches above (via the entity registry, matched on unique ID) and runs
   the scan accordingly, posting the same persistent-notification results
   the service call would. A button can't prompt for parameters when
   pressed, so pairing it with toggle switches is how a plain UI click can
-  still choose apply/include_names/remove_unused instead of those being
-  service-call-only.
+  still choose apply/include_names/remove_unused/skip_unused_alpha
+  instead of those being service-call-only.
 
-None of the three switches persist across an HA restart -- they always
-come back up off, so a forgotten "on" toggle can't silently carry into a
-scan run after a restart.
+None of the four switches persist across an HA restart -- they always
+come back up at their default (off for the first three, on for Only Scan
+Alpha for Active Zones), so a forgotten toggle can't silently carry into
+a scan run after a restart.
 
 The `envisalink_new.discover_zone_info` service remains available too
 (and is what automations/scripts should use, since they can just set
-`apply`/`include_names`/`remove_unused` directly rather than touching the
-switches first). The button and the service both call the exact same
-underlying function (`zone_discovery.async_run_zone_discovery`) so they
-can't drift out of sync.
+`apply`/`include_names`/`remove_unused`/`skip_unused_alpha` directly
+rather than touching the switches first). The button and the service both
+call the exact same underlying function
+(`zone_discovery.async_run_zone_discovery`) so they can't drift out of
+sync.
 
 ## Current limitations (left for follow-up PRs)
 
