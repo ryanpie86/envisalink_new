@@ -155,8 +155,37 @@ guesses in total: an initial version built purely from the general
 programming guide, a revision based on a more specific "20P Alpha
 Descriptor" addendum Ryan supplied, and -- after the keystrokes were
 finally right -- a wrong claim about the *captured text* being plain,
-which the debug log's raw wire data corrected (see below). See "Testing"
-below -- there's nothing left open on this path now.
+which the debug log's raw wire data corrected (see below).
+
+**A fourth issue turned up in a first live run of the finished code**
+(2026-08-26, live debug log): CUSTOM WORDS? -> `0` doesn't land on a
+passive zone-number entry prompt the way it was documented above and in
+code -- it lands *directly* on zone 1's own flashing-cursor descriptor
+view, the exact same screen `[*]+"01"` would show. So when zone 1 is the
+first (or only) zone scanned, sending `*01` produces a real keystroke but
+literally no new display text, since the panel's already showing it. The
+code was waiting for a display *change* here, which never came; worse,
+real hardware has its own inactivity watchdog on this screen -- observed
+backing all the way out of installer programming on its own about 9
+seconds after the last keystroke, with zero notice to the code beyond the
+display reverting to normal operation. The old code's 8-second step
+timeout was cutting it dangerously close to that watchdog and, on this
+run, lost the race -- the panel exited on its own before the code's
+timeout even fired, leaving the flashing cursor sitting on zone 1 for
+several seconds with no `[8]` ever sent, and Ryan had to back out at the
+keypad by hand. Panel was left in a clean, undamaged state -- normal
+operation resumed fine once program mode ended.
+
+The fix: rather than waiting for the display to *change*, the code now
+polls for the display to simply show the header for whichever zone it
+just asked for -- true instantly if the panel was already sitting there
+(zone 1's case), true very shortly after otherwise. See
+`_await_zone_descriptor_display` in `honeywell_zone_discovery.py` for the
+implementation, and a dedicated regression test
+(`test_include_names_zone_1_already_selected_does_not_hang`) that
+reproduces the exact no-change condition. See "Testing" below --
+everything else on this path (keystrokes, captured-text format) remains
+confirmed as it was.
 
 Runs once per scan, after the *56 walk finishes and exits back to the main
 menu -- not interleaved per zone, to avoid repeatedly entering/exiting two
@@ -166,8 +195,9 @@ different installer submenus:
 * 8 2          (enter *82 alpha descriptor programming -- once for the whole batch)
 1              (PROGRAM ALPHA? -> yes)
 0              (CUSTOM WORDS? -> no, standard descriptors)
-   ... lands on a "Zn 01" zone-number entry prompt, same shape as *56's
-       ENTER ZN NUM -- NOT on zone 1's descriptor automatically ...
+   ... lands DIRECTLY on zone 1's own flashing-cursor descriptor view --
+       NOT a passive zone-number entry prompt as this doc used to say
+       (corrected 2026-08-26 from a live run's debug log) ...
 
 for each requested zone (including the first):
   * <ZZ>       ([*] + zone number -- required for every zone, no exceptions)
@@ -192,12 +222,17 @@ all confirmed on real hardware:
   prompt. A prior version of this code sent `"1*"`/`"0*"`, which was wrong:
   the trailing key doesn't confirm the current prompt, it lands on the
   *next* one as its first keystroke.
-* **There is no "zone 1 displays automatically" shortcut, and no read-only
-  view at all.** CUSTOM WORDS? -> `0` lands on a zone-number entry prompt
-  (`"Zn 01"`), not on a descriptor. Every zone -- the first one included --
-  needs an explicit `[*]` + zone number, and that keystroke always drops
-  straight into a flashing-cursor edit field for that zone's descriptor.
-  There's no lesser "just look at it" mode.
+* **There is no read-only view at all, and (corrected 2026-08-26) no
+  "passive zone-number prompt" for zone 1 either.** Every zone -- the
+  first one included -- needs an explicit `[*]` + zone number, and that
+  keystroke always drops straight into a flashing-cursor edit field for
+  that zone's descriptor; there's no lesser "just look at it" mode. But
+  CUSTOM WORDS? -> `0` turns out to land *directly* on zone 1's own
+  descriptor view already, not on some separate "type a zone number here"
+  prompt as this doc previously claimed -- so `[*]+"01"` for the first
+  zone is a harmless, redundant keystroke that produces no visible change
+  when that first zone is 1. See "A fourth issue" above for why that
+  mattered.
 * **`[8]` is the only documented way back out of that field, and it's a
   save, not a cancel.** It re-commits whatever's currently displayed --
   which, since this code never touches the character-entry keys (`[#]` +
@@ -339,10 +374,18 @@ can't drift out of sync.
 ## Testing
 
 **Both the *56 zone-summary walk and the *82 alpha-descriptor walk
-(keystrokes and captured-text format alike) are now confirmed against a
-real Vista-20P panel** -- *56 on 2026-08-25, *82 on 2026-08-27, the latter
-via Ryan manually walking the exact sequence and photographing each
-screen. There's nothing left unconfirmed on either path.
+(keystrokes and captured-text format alike) have been confirmed against a
+real Vista-20P panel** -- *56 on 2026-08-25, *82 on 2026-08-27 via Ryan
+manually walking the exact sequence and photographing each screen.
+
+A first *live, end-to-end* run of the finished feature (2026-08-26, via
+the button with Include Names on / Apply Changes off) caught a real bug
+on zone 1 specifically -- see "A fourth issue turned up..." above. That's
+now fixed and covered by a regression test, but it hasn't yet had a
+second clean live run to confirm the fix holds against the real panel
+end-to-end. Until that happens, treat a fresh version of this feature as
+still needing the same cautious first pass below, even though the
+individual keystroke/text-format questions are settled.
 
 That said, this only reflects one panel's firmware revision. If you're
 running this against a different Vista-20P/15P (or a firmware revision

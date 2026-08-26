@@ -378,6 +378,49 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertIsNone(results[5]["name"])
         self.assertEqual(results[5]["zone_type"], "03")
 
+    def test_include_names_zone_1_already_selected_does_not_hang(self):
+        # Regression test for a real hang against real hardware
+        # (2026-08-27, see Ryan's HA debug log): CUSTOM WORDS? -> 0 lands
+        # *directly* on zone 1's own flashing-cursor descriptor view, so
+        # when zone 1 is the first (or only) zone scanned, sending "*01"
+        # produces no display change at all -- the panel already shows
+        # exactly what "*01" asks for. The old code waited for a display
+        # *change* here and would hang until its own step timeout, by
+        # which point the real panel's ~9s inactivity watchdog had already
+        # backed all the way out of installer programming. This fixture
+        # makes the "0" step and the "*01" step return the *exact same*
+        # string, reproducing that no-change condition; the fix
+        # (_await_zone_descriptor_display polls for the right zone's
+        # header instead of waiting for change) must return immediately
+        # instead of blocking.
+        blank_zone_1 = "* Zn 01  " + " " * 23
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",  # installer code + 800
+                "SET TO CONFIRM?",  # *56
+                "OK",  # 0
+                _summary("Zn ZT P RC HW:RT", "01 00 1 10 EL:1 "),  # "01*"
+                "Enter Zn Num.   (00=Quit)     02",  # "#"
+                "MAIN MENU",  # "00" (exit *56)
+                "PROGRAM ALPHA?",  # "*82"
+                "CUSTOM WORDS?",  # "1"
+                blank_zone_1,  # "0" -> lands directly on zone 1's descriptor
+                blank_zone_1,  # "*01" -> identical, no visible change
+                blank_zone_1,  # "8" -> saved, back to zone-number prompt
+                "PROGRAM ALPHA?",  # "*00"
+                "DATA MODE",  # "0"
+                "DATA MODE",  # "*99"
+            ],
+        )
+        discovery = _discovery(client)
+
+        results = _run(discovery.discover("1234", [1], include_names=True))
+
+        self.assertIsNone(results[1]["name"])
+        self.assertIn("*01", client.sent)
+        self.assertIn("8", client.sent)
+
     def test_installer_code_is_masked_in_logs_not_in_wire_data(self):
         sent_log = []
 

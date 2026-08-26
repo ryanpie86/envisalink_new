@@ -40,6 +40,23 @@ built to fail closed rather than guess:
     digit entry) while the cursor is active, so the value it saves back
     is always byte-for-byte what it just read -- but this is a real
     write each time, not a passive read, unlike the *56 walk above.
+  * Also confirmed against real hardware (2026-08-26, from a live run's
+    debug log): CUSTOM WORDS? -> 0 does not land on a passive "type a
+    zone number" prompt -- it lands *directly* on zone 1's own
+    flashing-cursor descriptor view, the exact same screen `[*]+"01"`
+    would show. So when the first zone requested is zone 1, sending
+    "*01" produces a real keystroke round-trip but no new display text
+    at all, since the panel is already showing it. Worse, the panel has
+    its own inactivity watchdog on this screen -- confirmed ~9 seconds
+    from the last keystroke to the panel silently backing all the way
+    out of installer programming on its own, with no notice to this
+    code beyond the display reverting to normal operation. A run that
+    waits for a display *change* that will never come burns most of an
+    8-second step timeout before erroring, which is well past that
+    watchdog. `_read_zone_descriptors` therefore polls for the display
+    to simply match the zone it asked for (true instantly if the panel
+    was already sitting there, true shortly after otherwise) rather than
+    waiting for a change, so the follow-up `[8]` always goes out fast.
   * If a captured display ever contains text that looks like a wireless
     enrollment prompt anyway ("S/N", "LOOP", "XMIT"), the entire run aborts
     immediately rather than pressing further keystrokes into unfamiliar
@@ -174,6 +191,46 @@ class HoneywellZoneDiscovery:
             elif current != baseline and (now - last_changed) >= SETTLE_WINDOW:
                 return current
 
+            await asyncio.sleep(POLL_INTERVAL)
+
+    async def _await_zone_descriptor_display(
+        self, zone: int, timeout: float = DEFAULT_STEP_TIMEOUT
+    ) -> str:
+        """Wait for the *82 zone-entry display to show `zone`'s descriptor.
+
+        CONFIRMED AGAINST REAL HARDWARE (2026-08-26, from a live debug log)
+        this can NOT be done the way every other step here waits -- for a
+        display *change* from a baseline. When the requested zone is
+        whichever zone the panel already has selected (always zone 1, the
+        very first zone entered after CUSTOM WORDS? -> 0 -- see the module
+        docstring's SAFETY MODEL section), sending "*01" produces no new
+        display text at all: it's already showing exactly what we're
+        about to ask for. Waiting for a change that will never come burns
+        most of the step timeout doing nothing, and the real panel has its
+        own inactivity watchdog on this screen that backs all the way out
+        of installer programming (observed ~9 seconds after the last
+        keystroke) if nothing else is pressed in time -- which a full
+        8-second wait here comes dangerously close to, or loses the race
+        with outright.
+
+        So instead this polls for the display's header to simply match
+        the zone requested -- true immediately if the panel was already
+        sitting there, true very shortly after if it had to move to get
+        there -- and returns as soon as it does. No settle window is
+        needed: the alpha field always arrives as one complete `%00`
+        message, never built up partially across polls.
+        """
+        expected_header = f"* Zn {zone:02d}"
+        deadline = time.monotonic() + timeout
+        while True:
+            current = self._current_alpha()
+            if current.startswith(expected_header):
+                return current
+            if time.monotonic() > deadline:
+                raise ZoneDiscoveryError(
+                    f"Timed out waiting for zone {zone}'s *82 descriptor "
+                    f"display (last seen: {current!r})"
+                )
             await asyncio.sleep(POLL_INTERVAL)
 
     def _check_for_wireless_prompt(self, alpha: str, zone: int) -> None:
@@ -343,20 +400,30 @@ class HoneywellZoneDiscovery:
           immediately advances the prompt. (A previous version of this
           code sent "1*"/"0*", which was wrong -- the trailing key landed
           on the *next* prompt instead of confirming the current one.)
-        * There is no "zone 1 displays automatically" shortcut, and no
-          read-only view at all: CUSTOM WORDS? -> 0 lands on a "Zn 01"
-          zone-number entry prompt (same shape as *56's ENTER ZN NUM), and
-          [*] + zone number is required for EVERY zone, first one
-          included. That immediately shows the zone's existing descriptor
-          with a flashing cursor (edit mode) -- entering a zone number is
-          the *only* way to see it, there's no lesser "peek" available.
-          [8] ("save") is the only documented way back out, and it always
-          re-commits whatever's currently shown. Since this code never
-          sends any of the character-entry keys ([#] + vocabulary code,
-          [6], digit entry) while the cursor is active, what gets saved is
-          always exactly what was just read -- but it IS a real write each
-          time, not a passive read, unlike the *56 walk. See the module
-          docstring's SAFETY MODEL section.
+        * There is no read-only view at all: [*] + zone number is required
+          for EVERY zone, first one included, and it immediately shows the
+          zone's existing descriptor with a flashing cursor (edit mode) --
+          entering a zone number is the *only* way to see it, there's no
+          lesser "peek" available. [8] ("save") is the only documented way
+          back out, and it always re-commits whatever's currently shown.
+          Since this code never sends any of the character-entry keys ([#]
+          + vocabulary code, [6], digit entry) while the cursor is active,
+          what gets saved is always exactly what was just read -- but it
+          IS a real write each time, not a passive read, unlike the *56
+          walk. See the module docstring's SAFETY MODEL section.
+        * CORRECTION (2026-08-26, from a live debug log): CUSTOM WORDS? ->
+          0 does NOT land on a passive "Zn 01" zone-number entry prompt
+          the way an earlier version of this docstring claimed (that
+          claim came from photos of a manual walk-through and was wrong).
+          It lands *directly* on zone 1's own flashing-cursor descriptor
+          view -- the same screen [*]+"01" would show. This code still
+          sends "*01" for the first zone anyway (harmless and simpler than
+          special-casing zone 1), but it will produce no visible display
+          change when that first zone is 1, which is why
+          `_await_zone_descriptor_display` polls for the right zone's
+          header rather than waiting for a change -- see that method's
+          docstring for why waiting for a change caused a real hang
+          against a real panel.
 
         The captured text format is ALSO now confirmed, from Ryan's HA
         debug log of this exact session (2026-08-27) -- and this corrects
@@ -395,9 +462,12 @@ class HoneywellZoneDiscovery:
         await self._await_alpha_change(baseline)
 
         # CUSTOM WORDS? -> 0 = no (standard descriptors). Also a bare
-        # digit. Lands on a "Zn 01" zone-number entry prompt -- NOT on
-        # zone 1's descriptor automatically, despite what the reference
-        # document implied.
+        # digit. Lands directly on zone 1's own flashing-cursor descriptor
+        # view (confirmed via live debug log, 2026-08-26) -- not a passive
+        # zone-number entry prompt as an earlier version of this comment
+        # claimed. That's why the per-zone loop below can't wait for a
+        # display *change* on zone 1's first "*01" -- see
+        # _await_zone_descriptor_display.
         baseline = self._current_alpha()
         await self._send("0")
         await self._await_alpha_change(baseline)
@@ -405,10 +475,14 @@ class HoneywellZoneDiscovery:
         for zone in zones:
             # [*] + zone number is required for every zone, including the
             # first -- confirmed against real hardware. Immediately shows
-            # the existing descriptor with a flashing cursor.
-            baseline = self._current_alpha()
+            # the existing descriptor with a flashing cursor. Polls for
+            # the right zone's header rather than waiting for a display
+            # *change* -- see _await_zone_descriptor_display's docstring:
+            # waiting for change hung for real against zone 1, since the
+            # panel is already sitting on zone 1's descriptor before this
+            # keystroke is even sent.
             await self._send(f"*{zone:02d}")
-            descriptor = await self._await_alpha_change(baseline)
+            descriptor = await self._await_zone_descriptor_display(zone)
             self._check_for_wireless_prompt(descriptor, zone)
 
             descriptors[zone] = self._parse_zone_descriptor(descriptor)
