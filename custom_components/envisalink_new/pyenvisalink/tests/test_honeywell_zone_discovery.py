@@ -79,6 +79,21 @@ def _discovery(client, partition_number=1):
     return HoneywellZoneDiscovery(client, partition_number=partition_number, step_pause=0)
 
 
+def _descriptor_display(zone: int, text: str = "") -> str:
+    """Build a *82 zone-entry alpha string like real hardware sends --
+    confirmed against Ryan's HA debug log (2026-08-27): the "* Zn NN  "
+    header (9 chars) glued directly to a 23-character descriptor field,
+    no separator (see HoneywellZoneDiscovery._parse_zone_descriptor). A
+    blank (unprogrammed) zone is just the header followed by all spaces.
+    `text` may itself contain the double-space line-wrap artifact real
+    hardware produces (e.g. "FRONT  DOOR" for a name programmed as
+    "FRONT DOOR") -- parsing collapses any whitespace run regardless.
+    """
+    header = f"* Zn {zone:02d}  "
+    assert len(header) == 9, header
+    return header + text.ljust(23)[:23]
+
+
 def _summary(header: str, data_row: str) -> str:
     """Build a 32-char concatenated SUMMARY SCREEN alpha string like real
     hardware sends -- header and data row butted together with no space."""
@@ -210,6 +225,26 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertEqual(results[1]["zone_type"], "00")
         self.assertEqual(results[1]["raw_summary"], summary)
 
+    def test_parse_zone_descriptor_from_real_debug_log_capture(self):
+        # Exact raw wire data from Ryan's HA debug log (2026-08-27) for his
+        # own panel, not a fictional fixture -- see docs/zone_discovery.md
+        # "Testing" for the full log excerpt this was pulled from. Zone 9's
+        # descriptor ("* Zn 09  FRONT  DOOR            ") shows the same
+        # concatenated-header problem *56's summary screen had, plus a
+        # line-wrap double space in the middle of the name; zone 1's
+        # ("* Zn 01                         ") is genuinely blank.
+        self.assertEqual(
+            HoneywellZoneDiscovery._parse_zone_descriptor(
+                "* Zn 09  FRONT  DOOR            "
+            ),
+            "FRONT DOOR",
+        )
+        self.assertIsNone(
+            HoneywellZoneDiscovery._parse_zone_descriptor(
+                "* Zn 01                         "
+            )
+        )
+
     def test_aborts_on_wireless_looking_prompt(self):
         client = _FakeClient(
             1,
@@ -244,9 +279,13 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         # photographed each screen) -- this superseded an earlier, wrong
         # guess built from the reference doc alone (bare "1"/"0" was
         # right, not "1*"/"0*"; zone 1 has no free auto-display; "8" is
-        # required per zone). The captured-text format for an
-        # *unprogrammed* zone is still not confirmed -- see
-        # _read_zone_descriptors' docstring.
+        # required per zone). See test_include_names_blank_descriptor_
+        # becomes_none below for the unprogrammed-zone (blank) case, and
+        # _parse_zone_descriptor's docstring for the "* Zn NN  " header
+        # that this capture glues onto the descriptor text -- also
+        # confirmed from the same session's HA debug log (2026-08-27),
+        # which caught this code (and this test) initially treating the
+        # capture as plain text when it isn't.
         summary_1 = _summary("Zn ZT P RC HW:RT", "01 01 1 10 EL:1 ")
         summary_2 = _summary("Zn ZT P RC HW:RT", "02 09 1 10 EL:1 ")
         client = _FakeClient(
@@ -262,11 +301,11 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "MAIN MENU",  # "00" (exit *56)
                 "PROGRAM ALPHA?",  # "*82"
                 "CUSTOM WORDS?",  # "1"
-                "Zn 01",  # "0" -> zone-number entry prompt
-                "FRONT DOOR      ",  # "*01" -> zone 1's descriptor
-                "Zn 01",  # "8" -> saved, back to zone-number prompt
-                "BACK DOOR       ",  # "*02" -> zone 2's descriptor
-                "Zn 02",  # "8" -> saved, back to zone-number prompt
+                "* Zn 01  " + " " * 23,  # "0" -> zone-number entry prompt
+                _descriptor_display(1, "FRONT  DOOR"),  # "*01" -> zone 1 (real log's line-wrap spacing)
+                "* Zn 01  " + " " * 23,  # "8" -> saved, back to zone-number prompt
+                _descriptor_display(2, "BACK DOOR"),  # "*02" -> zone 2's descriptor
+                "* Zn 02  " + " " * 23,  # "8" -> saved, back to zone-number prompt
                 "PROGRAM ALPHA?",  # "*00" (back out)
                 "DATA MODE",  # "0" (exit *82)
                 "DATA MODE",  # "*99" (exit program mode)
@@ -303,6 +342,41 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertEqual(results[1]["name"], "FRONT DOOR")
         self.assertEqual(results[2]["zone_type"], "09")
         self.assertEqual(results[2]["name"], "BACK DOOR")
+
+    def test_include_names_blank_descriptor_becomes_none(self):
+        # An unprogrammed zone's *82 descriptor is the "* Zn NN  " header
+        # followed by all spaces -- confirmed both by Ryan manually
+        # checking a zone known to have no name set, and independently by
+        # the raw wire data in his HA debug log (2026-08-27, zone 1 on his
+        # panel: "* Zn 01                         ", 32 chars, nothing but
+        # spaces after the header). _parse_zone_descriptor turns that into
+        # None; this locks the behavior in.
+        summary_5 = _summary("Zn ZT P RC IN:L ", "05 03 1 10 RF: -")
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",
+                "SET TO CONFIRM?",
+                "OK",
+                summary_5,  # "05*"
+                "Enter Zn Num.   (00=Quit)     06",  # "#"
+                "MAIN MENU",  # "00" (exit *56)
+                "PROGRAM ALPHA?",  # "*82"
+                "CUSTOM WORDS?",  # "1"
+                "* Zn 01  " + " " * 23,  # "0" -> zone-number entry prompt
+                _descriptor_display(5),  # "*05" -> blank descriptor (no name set)
+                "* Zn 05  " + " " * 23,  # "8" -> saved, back to zone-number prompt
+                "PROGRAM ALPHA?",  # "*00"
+                "DATA MODE",  # "0"
+                "DATA MODE",  # "*99"
+            ],
+        )
+        discovery = _discovery(client)
+
+        results = _run(discovery.discover("1234", [5], include_names=True))
+
+        self.assertIsNone(results[5]["name"])
+        self.assertEqual(results[5]["zone_type"], "03")
 
     def test_installer_code_is_masked_in_logs_not_in_wire_data(self):
         sent_log = []

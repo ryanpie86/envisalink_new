@@ -296,6 +296,39 @@ class HoneywellZoneDiscovery:
             return f"{int(candidate):02d}"
         return None
 
+    @staticmethod
+    def _parse_zone_descriptor(display: str) -> str | None:
+        """Pull the actual descriptor text out of a *82 zone-entry display.
+
+        Confirmed against real hardware (2026-08-27, from Ryan's HA debug
+        log of this exact session): like the *56 SUMMARY SCREEN, this is
+        the panel's two 16-character display lines concatenated with NO
+        separator, NOT plain text the way an earlier version of this
+        docstring wrongly claimed (that claim was written right after a
+        manual walk-through, from misreading photos of the physical
+        display -- the debug log's raw wire data corrected it).
+
+        The fixed header is `"* Zn NN  "` (9 characters: the leading `*`
+        that marks an active data field, `"Zn "`, the 2-digit zone
+        number, 2 trailing spaces). What's left (23 characters -- the
+        rest of line 1 through all of line 2) is the descriptor. Example,
+        zone 9 programmed as "FRONT DOOR":
+
+            "* Zn 09  FRONT  DOOR            "
+             ^-- header (9 chars) --^^-- descriptor field (23 chars) ---^
+
+        Note the double space before "DOOR" -- that's line 1's padding
+        out to its full 16 characters before line 2 starts, not a
+        deliberate separator. Splitting on whitespace and rejoining with
+        single spaces cleans that up to "FRONT DOOR". An unprogrammed
+        zone's descriptor field is all spaces, which collapses to "" ->
+        `None`.
+        """
+        if len(display) < 9:
+            return None
+        payload = display[9:]
+        return " ".join(payload.split()) or None
+
     async def _read_zone_descriptors(self, zones: list[int]) -> dict[int, str | None]:
         """Use *82 to read the currently-assigned descriptor for each zone.
 
@@ -325,10 +358,24 @@ class HoneywellZoneDiscovery:
           time, not a passive read, unlike the *56 walk. See the module
           docstring's SAFETY MODEL section.
 
-        The captured text format itself (whether `.strip()` alone is
-        right for every case, e.g. an unprogrammed zone) is still not
-        fully confirmed -- see docs/zone_discovery.md "Testing" for what's
-        left to check.
+        The captured text format is ALSO now confirmed, from Ryan's HA
+        debug log of this exact session (2026-08-27) -- and this corrects
+        a wrong claim made right after the manual walk-through, based on
+        misreading photos of the physical display. The alpha text is,
+        like *56's SUMMARY SCREEN, the panel's two 16-character display
+        lines concatenated with NO separator -- it is NOT plain text. The
+        fixed header here is `"* Zn NN  "` (9 characters: the leading `*`
+        that marks an active data field, `"Zn "`, the 2-digit zone
+        number, 2 trailing spaces), and the actual descriptor is
+        whatever's left (23 characters -- the rest of line 1 through all
+        of line 2). A name that wraps across that line boundary keeps its
+        line-1 padding in the raw text (e.g. a zone programmed as "FRONT
+        DOOR" read back as `"FRONT  DOOR            "` after the header --
+        note the double space), so `_parse_zone_descriptor` collapses
+        whitespace runs rather than just stripping the ends. A blank
+        (unprogrammed) zone reads back as all spaces after the header,
+        which collapses to `None`. See `_parse_zone_descriptor` and
+        docs/zone_discovery.md "Testing" for the confirming log excerpt.
 
         Enters *82 once for the whole batch (mirroring `_enter_zone_menu`
         for *56) rather than once per zone, to avoid repeatedly entering
@@ -364,7 +411,7 @@ class HoneywellZoneDiscovery:
             descriptor = await self._await_alpha_change(baseline)
             self._check_for_wireless_prompt(descriptor, zone)
 
-            descriptors[zone] = descriptor.strip() or None
+            descriptors[zone] = self._parse_zone_descriptor(descriptor)
             _LOGGER.info("Zone discovery: zone %s descriptor -> %r", zone, descriptors[zone])
 
             # [8] "saves" and returns to the Zn ## prompt for the next

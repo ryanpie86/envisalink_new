@@ -42,10 +42,11 @@ the PROGRAM ALPHA?/CUSTOM WORDS? answers, and there is no read-only
 "view" -- every zone lands in an editable field that has to be saved
 (`[8]`) to move past.
 
-Both menus' keystrokes are now **confirmed against real hardware**: *56 on
-2026-08-25, *82 on 2026-08-27 (Ryan manually walked the exact sequence and
-photographed each screen). What's still open for *82 is the captured-text
-format for an *unprogrammed* zone -- see "Testing" below.
+Both menus are now **fully confirmed against real hardware**, keystrokes
+and captured-text format alike: *56 on 2026-08-25, *82 on 2026-08-27 (Ryan
+manually walked the exact sequence and photographed each screen, including
+confirming a blank display for an unprogrammed zone). Nothing remains open
+on either path -- see "Testing" below.
 
 ## What it actually sends
 
@@ -145,15 +146,17 @@ this code has no business touching. By stopping at the summary screen,
 that prompt is simply never reachable, regardless of how any given zone is
 actually wired.
 
-### Per zone: *82 alpha descriptor (name) -- wired in, keystrokes now hardware-confirmed
+### Per zone: *82 alpha descriptor (name) -- fully confirmed against real hardware
 
 **Confirmed against real hardware** (2026-08-27 -- Ryan manually walked this
-exact sequence on his Vista-20P and photographed every screen). This
-superseded two earlier wrong guesses: an initial version built purely from
-the general programming guide, then a revision based on a more specific
-"20P Alpha Descriptor" addendum Ryan supplied -- both turned out to be
-wrong in ways only the manual walk-through caught. See "Testing" below for
-what's still open (the captured-text format for an *unprogrammed* zone).
+exact sequence on his Vista-20P, photographed every screen, and later sent
+the HA debug log covering the same session). This superseded *three* wrong
+guesses in total: an initial version built purely from the general
+programming guide, a revision based on a more specific "20P Alpha
+Descriptor" addendum Ryan supplied, and -- after the keystrokes were
+finally right -- a wrong claim about the *captured text* being plain,
+which the debug log's raw wire data corrected (see below). See "Testing"
+below -- there's nothing left open on this path now.
 
 Runs once per scan, after the *56 walk finishes and exits back to the main
 menu -- not interleaved per zone, to avoid repeatedly entering/exiting two
@@ -209,12 +212,32 @@ all confirmed on real hardware:
 `0` (exit without saving) are unchanged from earlier guesses -- both are
 now confirmed correct.
 
-The captured text itself, for a zone that *does* have a descriptor set
-(e.g. `"FRONT DOOR"`), came back as plain text with no header noise, unlike
-the *56 summary screen's concatenated two-line format -- good news for the
-`.strip()`-only parsing already in place. What an *unprogrammed* zone's
-descriptor looks like when read this way is still unconfirmed -- see
-"Testing" below.
+**The captured text is NOT plain -- a claim written right after the manual
+walk-through said it was, based on misreading photos of the physical
+display, and Ryan's HA debug log of that same session corrected it.** Like
+the *56 SUMMARY SCREEN, this is the panel's two 16-character display lines
+concatenated with NO separator. The fixed header here is `"* Zn NN  "` (9
+characters -- the leading `*` that marks an active data field, `"Zn "`,
+the 2-digit zone number, 2 trailing spaces); what's left (23 characters) is
+the descriptor. Raw wire data from the log, for Ryan's zone 9 (programmed
+as "FRONT DOOR") and zone 1 (unprogrammed):
+
+```
+"* Zn 09  FRONT  DOOR            "     (zone 9, has a descriptor)
+ ^-- header (9 chars) --^^-- descriptor field (23 chars) -----^
+
+"* Zn 01                         "     (zone 1, blank/unprogrammed)
+```
+
+Note the double space before "DOOR" in the zone 9 example -- that's line
+1's padding out to its full 16 characters before line 2 starts, not a
+deliberate separator in the name. `_parse_zone_descriptor` (added
+alongside this fix, mirroring `_parse_zone_type_from_summary`) slices off
+the 9-character header and collapses whitespace runs in what's left,
+turning `"FRONT  DOOR            "` into `"FRONT DOOR"` and an all-spaces
+field into `None`. The earlier `.strip()`-only approach would have left
+the header (`"* Zn 09  "`) and the internal double space sitting in every
+name it read -- this was caught before it ever reached `apply: true`.
 
 ### Exiting
 
@@ -295,16 +318,16 @@ can't drift out of sync.
   descriptor read ever looks like an enrollment prompt, the whole run
   aborts (see above). This has not been tested against a system with any
   RF zones.
-* Name (from *82, via `include_names`) has its **keystroke sequence
-  confirmed against real hardware** (2026-08-27, see the *82 section
-  above), but the captured-text format for an *unprogrammed* zone is
-  still unconfirmed -- see "Testing" below. Also note that, unlike zone
-  type, reading a name via *82 is mechanically a write each time (the
-  panel's only way back out of the descriptor field is `[8]`, which
-  re-saves what's shown) -- functionally harmless since this code never
-  edits the text first, but worth knowing. The finer-grained fields from
-  the full *56 per-field walk (hardware loop type, response time, report
-  code, etc.) are intentionally not read, for the reasons above.
+* Name (from *82, via `include_names`) is now **fully confirmed against
+  real hardware** (2026-08-27, see the *82 section above), keystrokes and
+  captured-text format both, including the unprogrammed-zone (blank) case.
+  Note that, unlike zone type, reading a name via *82 is mechanically a
+  write each time (the panel's only way back out of the descriptor field
+  is `[8]`, which re-saves what's shown) -- functionally harmless since
+  this code never edits the text first, but worth knowing. The
+  finer-grained fields from the full *56 per-field walk (hardware loop
+  type, response time, report code, etc.) are intentionally not read, for
+  the reasons above.
 * Zone type -> HA `BinarySensorDeviceClass` mapping
   (`evl_Honeywell_Zone_Type_To_Device_Class` in
   `pyenvisalink/honeywell_envisalinkdefs.py`) is a best-effort convention
@@ -316,25 +339,24 @@ can't drift out of sync.
 ## Testing
 
 **Both the *56 zone-summary walk and the *82 alpha-descriptor walk
-(keystrokes above) are now confirmed against a real Vista-20P panel** --
-*56 on 2026-08-25, *82 on 2026-08-27. What's left before fully trusting
-`include_names`/the "Include Names" toggle is narrower now: not the
-keystrokes themselves, but the captured-text format for a zone that has
-**no** descriptor set (blank vs. some panel-generated default like "ZONE
-02" -- unconfirmed either way).
+(keystrokes and captured-text format alike) are now confirmed against a
+real Vista-20P panel** -- *56 on 2026-08-25, *82 on 2026-08-27, the latter
+via Ryan manually walking the exact sequence and photographing each
+screen. There's nothing left unconfirmed on either path.
+
+That said, this only reflects one panel's firmware revision. If you're
+running this against a different Vista-20P/15P (or a firmware revision
+that behaves differently), it's still worth a first pass with "Include
+Names" on and "Apply Changes" off before trusting it on your system:
 
 1. Turn on "Include Names" but leave "Apply Changes" off (or pass
    `include_names: true, apply: false` to the service), on a disarmed
-   system, with someone physically at a keypad watching what the panel
-   actually does when *82 comes up.
+   system.
 2. Compare the notification's raw names against what you already know
-   each zone's descriptor to be -- including at least one zone you know
-   has never had a name set, to see what an unprogrammed zone reads back
-   as.
+   each zone's descriptor to be.
 3. Only turn on "Apply Changes" (or pass `apply: true`) once you're
    confident the names are coming through correctly for your panel/
-   firmware revision -- same as always applies to zone type, which is
-   already confirmed working.
+   firmware revision.
 
 If a step doesn't behave the way this doc says it should, please open an
 issue with the debug log (`custom_components.envisalink_new: debug`) --
