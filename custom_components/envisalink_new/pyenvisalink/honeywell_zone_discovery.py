@@ -31,10 +31,15 @@ built to fail closed rather than guess:
     stepping past the summary screen, that prompt is never reachable
     regardless of how a given zone is configured. The summary screen text
     itself already contains the zone type, which is all this version needs.
-  * For *82, per the programming guide, pressing [*] + zone number *once*
-    displays a zone's existing descriptor; only a *second* [*] + zone
-    number enters edit mode (flashing cursor). This code only ever sends
-    the single tap.
+  * For *82, confirmed against real hardware (2026-08-27): there is no
+    read-only view. Entering a zone number (`[*]` + zone number) always
+    lands on that zone's existing descriptor with a flashing cursor
+    (edit mode), and `[8]` is required to get back out -- which re-saves
+    whatever is currently displayed, unchanged or not. This code never
+    touches the character-entry keys (`[#]` + vocabulary code, `[6]`,
+    digit entry) while the cursor is active, so the value it saves back
+    is always byte-for-byte what it just read -- but this is a real
+    write each time, not a passive read, unlike the *56 walk above.
   * If a captured display ever contains text that looks like a wireless
     enrollment prompt anyway ("S/N", "LOOP", "XMIT"), the entire run aborts
     immediately rather than pressing further keystrokes into unfamiliar
@@ -292,31 +297,42 @@ class HoneywellZoneDiscovery:
         return None
 
     async def _read_zone_descriptors(self, zones: list[int]) -> dict[int, str | None]:
-        """Use *82 to view (not edit) the currently-assigned name for each zone.
+        """Use *82 to read the currently-assigned descriptor for each zone.
 
-        NOT YET VALIDATED AGAINST REAL HARDWARE (unlike the *56 walk above)
-        -- built against a specific programming reference for this menu
-        ("*82 Alpha Descriptor Programming", VISTA-20P Alpha Descriptor
-        addendum, p.10), which is more precise here than the general
-        programming guide *56 was originally built against. That precision
-        is why this now sends an explicit [*] after both the PROGRAM ALPHA?
-        and CUSTOM WORDS? answers (see below) instead of a bare digit --
-        but the exact captured-text format still has not been cross-checked
-        against a real panel the way the *56 SUMMARY SCREEN format was (see
-        `_parse_zone_type_from_summary`'s docstring for how wrong a guess
-        here can be, even when the keystrokes themselves are right). Test
-        with `include_names` on and `apply` off first, on a disarmed system
-        with someone watching the physical keypad, and compare the
-        notification's raw text against what the panel actually shows --
-        see docs/zone_discovery.md "Testing".
+        CONFIRMED AGAINST REAL HARDWARE (2026-08-27, Ryan manually walked
+        this exact sequence and photographed each screen) -- this replaced
+        an earlier, wrong guess built from the reference documents alone.
+        Two things the docs got wrong, corrected here:
+
+        * PROGRAM ALPHA? and CUSTOM WORDS? each take a bare digit with NO
+          trailing [*]/[#] -- the addendum's "press [*] or [#] to continue"
+          wording was misleading; on real hardware the digit alone
+          immediately advances the prompt. (A previous version of this
+          code sent "1*"/"0*", which was wrong -- the trailing key landed
+          on the *next* prompt instead of confirming the current one.)
+        * There is no "zone 1 displays automatically" shortcut, and no
+          read-only view at all: CUSTOM WORDS? -> 0 lands on a "Zn 01"
+          zone-number entry prompt (same shape as *56's ENTER ZN NUM), and
+          [*] + zone number is required for EVERY zone, first one
+          included. That immediately shows the zone's existing descriptor
+          with a flashing cursor (edit mode) -- entering a zone number is
+          the *only* way to see it, there's no lesser "peek" available.
+          [8] ("save") is the only documented way back out, and it always
+          re-commits whatever's currently shown. Since this code never
+          sends any of the character-entry keys ([#] + vocabulary code,
+          [6], digit entry) while the cursor is active, what gets saved is
+          always exactly what was just read -- but it IS a real write each
+          time, not a passive read, unlike the *56 walk. See the module
+          docstring's SAFETY MODEL section.
+
+        The captured text format itself (whether `.strip()` alone is
+        right for every case, e.g. an unprogrammed zone) is still not
+        fully confirmed -- see docs/zone_discovery.md "Testing" for what's
+        left to check.
 
         Enters *82 once for the whole batch (mirroring `_enter_zone_menu`
         for *56) rather than once per zone, to avoid repeatedly entering
-        and exiting installer-programming submenus. Per the reference:
-        pressing [*] + zone number *once* displays a zone's existing
-        descriptor; only a *second* [*] + zone number enters edit mode
-        (flashing cursor). This only ever sends the single tap, and never
-        writes anything.
+        and exiting installer-programming submenus.
         """
         descriptors: dict[int, str | None] = {}
 
@@ -324,45 +340,50 @@ class HoneywellZoneDiscovery:
         await self._send("*82")
         await self._await_alpha_change(baseline)
 
-        # PROGRAM ALPHA? -> 1 = yes, then "Press [*] or [#] to continue."
-        # (explicitly documented for this prompt, unlike *56's bare-digit
-        # SET TO CONFIRM? answer -- sent as one combined keystroke batch,
-        # same pattern as *56's "<ZZ>*" zone-number submission.)
+        # PROGRAM ALPHA? -> 1 = yes. Bare digit, no trailing [*]/[#] --
+        # confirmed against real hardware; unlike *56's SET TO CONFIRM?,
+        # this one also happens to auto-advance on the bare digit alone.
         baseline = self._current_alpha()
-        await self._send("1*")
+        await self._send("1")
         await self._await_alpha_change(baseline)
 
-        # CUSTOM WORDS? -> 0 = no (standard descriptors), then "Press [*] to
-        # continue" -- after which "the system will then display the
-        # descriptor for zone 1" automatically.
+        # CUSTOM WORDS? -> 0 = no (standard descriptors). Also a bare
+        # digit. Lands on a "Zn 01" zone-number entry prompt -- NOT on
+        # zone 1's descriptor automatically, despite what the reference
+        # document implied.
         baseline = self._current_alpha()
-        await self._send("0*")
-        descriptor_zone1 = await self._await_alpha_change(baseline)
-        self._check_for_wireless_prompt(descriptor_zone1, 1)
+        await self._send("0")
+        await self._await_alpha_change(baseline)
 
         for zone in zones:
-            if zone == 1:
-                descriptor = descriptor_zone1
-            else:
-                baseline = self._current_alpha()
-                await self._send(f"*{zone:02d}")
-                descriptor = await self._await_alpha_change(baseline)
-                self._check_for_wireless_prompt(descriptor, zone)
+            # [*] + zone number is required for every zone, including the
+            # first -- confirmed against real hardware. Immediately shows
+            # the existing descriptor with a flashing cursor.
+            baseline = self._current_alpha()
+            await self._send(f"*{zone:02d}")
+            descriptor = await self._await_alpha_change(baseline)
+            self._check_for_wireless_prompt(descriptor, zone)
 
             descriptors[zone] = descriptor.strip() or None
             _LOGGER.info("Zone discovery: zone %s descriptor -> %r", zone, descriptors[zone])
 
-        # Back out: per the reference, "[*] + 0 + 0 (or simply [#])" returns
-        # to the PROGRAM ALPHA? prompt; documented in the context of
-        # finishing an edit, but this is the only documented way back to
-        # that prompt, so it's used here too even though we only ever
-        # viewed (never edited) descriptors. Then 0 = no exits to data-field
-        # mode without saving anything.
+            # [8] "saves" and returns to the Zn ## prompt for the next
+            # zone -- confirmed against real hardware as the only way back
+            # out of the flashing-cursor field. Re-commits the same text
+            # just read, since nothing here ever edits it.
+            baseline = self._current_alpha()
+            await self._send("8")
+            with contextlib.suppress(ZoneDiscoveryError):
+                await self._await_alpha_change(baseline, timeout=3.0)
+
+        # From the Zn ## prompt, [*] + 0 + 0 returns to PROGRAM ALPHA? --
+        # confirmed against real hardware.
         baseline = self._current_alpha()
         await self._send("*00")
         with contextlib.suppress(ZoneDiscoveryError):
             await self._await_alpha_change(baseline, timeout=3.0)
 
+        # PROGRAM ALPHA? -> 0 = no, exits back to data-field mode.
         baseline = self._current_alpha()
         await self._send("0")
         with contextlib.suppress(ZoneDiscoveryError):

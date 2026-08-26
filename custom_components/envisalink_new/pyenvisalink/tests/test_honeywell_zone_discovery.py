@@ -231,15 +231,22 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
     def test_include_names_reads_82_descriptors_after_56_walk(self):
         # include_names=True should, after the normal *56 walk finishes and
         # exits back to the main menu, enter *82 exactly once for the whole
-        # batch: PROGRAM ALPHA? -> "1*" (yes, then [*] to continue -- this
-        # prompt explicitly documents a trailing [*]/[#], unlike *56's bare-
-        # digit SET TO CONFIRM? answer), CUSTOM WORDS? -> "0*" (no, then
-        # [*] to continue, which itself displays zone 1's descriptor), then
-        # jump straight to each other requested zone with "*NN", and finally
-        # back out with "*00" then "0". Confirmed against the VISTA-20P
-        # Alpha Descriptor reference doc (2026-08-27) for the keystrokes;
-        # the captured-text format is still NOT confirmed against real
-        # hardware -- see _read_zone_descriptors' docstring.
+        # batch: PROGRAM ALPHA? -> "1" (yes -- bare digit, no trailing
+        # [*]/[#]), CUSTOM WORDS? -> "0" (no, standard descriptors -- also
+        # bare), which lands on a "Zn 01" zone-number entry prompt (NOT
+        # zone 1's descriptor automatically). Every zone, including the
+        # first, needs an explicit "*NN" to enter it, which immediately
+        # shows the existing descriptor with a flashing cursor; "8" saves
+        # (re-commits the same text) and returns to the zone-number
+        # prompt for the next zone. Finally "*00" then "0" backs out to
+        # PROGRAM ALPHA? and exits. Confirmed against real hardware
+        # (2026-08-27, Ryan manually walked this exact sequence and
+        # photographed each screen) -- this superseded an earlier, wrong
+        # guess built from the reference doc alone (bare "1"/"0" was
+        # right, not "1*"/"0*"; zone 1 has no free auto-display; "8" is
+        # required per zone). The captured-text format for an
+        # *unprogrammed* zone is still not confirmed -- see
+        # _read_zone_descriptors' docstring.
         summary_1 = _summary("Zn ZT P RC HW:RT", "01 01 1 10 EL:1 ")
         summary_2 = _summary("Zn ZT P RC HW:RT", "02 09 1 10 EL:1 ")
         client = _FakeClient(
@@ -254,9 +261,12 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "Enter Zn Num.   (00=Quit)     03",  # "#"
                 "MAIN MENU",  # "00" (exit *56)
                 "PROGRAM ALPHA?",  # "*82"
-                "CUSTOM WORDS?",  # "1*"
-                "FRONT DOOR      ",  # "0*" -> zone 1's descriptor
+                "CUSTOM WORDS?",  # "1"
+                "Zn 01",  # "0" -> zone-number entry prompt
+                "FRONT DOOR      ",  # "*01" -> zone 1's descriptor
+                "Zn 01",  # "8" -> saved, back to zone-number prompt
                 "BACK DOOR       ",  # "*02" -> zone 2's descriptor
+                "Zn 02",  # "8" -> saved, back to zone-number prompt
                 "PROGRAM ALPHA?",  # "*00" (back out)
                 "DATA MODE",  # "0" (exit *82)
                 "DATA MODE",  # "*99" (exit program mode)
@@ -278,9 +288,12 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "#",
                 "00",
                 "*82",
-                "1*",
-                "0*",
+                "1",
+                "0",
+                "*01",
+                "8",
                 "*02",
+                "8",
                 "*00",
                 "0",
                 "*99",

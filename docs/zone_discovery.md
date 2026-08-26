@@ -31,19 +31,21 @@ The *56 keystroke sequences below are taken from the Honeywell/Ademco
 * p.8 -- "*56 Zone Programming Menu Mode" (ENTER ZN NUM / SUMMARY SCREEN /
   the full per-zone field sequence)
 
-The *82 keystroke sequences are instead taken from a more specific
+The *82 keystroke sequences were originally drafted from a more specific
 reference Ryan supplied, a "20P Alpha Descriptor" addendum (p.10-11, "*82
 Alpha Descriptor Programming" -- covers viewing vs. editing an existing
 zone descriptor, plus the Alpha Vocabulary List and custom-word/ASCII
-character tables), which documents this menu's prompts more precisely than
-the general programming guide above did (e.g. explicitly calling out a
-trailing [*]/[#] after the PROGRAM ALPHA? and CUSTOM WORDS? answers, which
-the general guide's *82 section didn't spell out).
+character tables) -- but that addendum's wording turned out to be
+misleading on two points a manual walk-through caught (see "Per zone: *82
+alpha descriptor" below): no trailing confirm key is actually needed on
+the PROGRAM ALPHA?/CUSTOM WORDS? answers, and there is no read-only
+"view" -- every zone lands in an editable field that has to be saved
+(`[8]`) to move past.
 
-Both were built and reviewed against their respective documents. The *56
-walk has since been **confirmed against real hardware** (2026-08-25, see
-below); the *82 walk has **not** been exercised against real hardware yet
--- see "Testing" below before relying on it.
+Both menus' keystrokes are now **confirmed against real hardware**: *56 on
+2026-08-25, *82 on 2026-08-27 (Ryan manually walked the exact sequence and
+photographed each screen). What's still open for *82 is the captured-text
+format for an *unprogrammed* zone -- see "Testing" below.
 
 ## What it actually sends
 
@@ -143,18 +145,15 @@ this code has no business touching. By stopping at the summary screen,
 that prompt is simply never reachable, regardless of how any given zone is
 actually wired.
 
-### Per zone: *82 alpha descriptor (name) -- wired in, NOT yet hardware-validated
+### Per zone: *82 alpha descriptor (name) -- wired in, keystrokes now hardware-confirmed
 
-**Now wired into `discover()`** (`include_names=True`), but unlike the *56
-zone-type walk above, this path has **not** been exercised against real
-hardware yet -- it's built against the programming guide the same way *56
-originally was, before that validation turned up the corrections
-documented above. Expect the same kind of surprises (an unexpected
-separator, a different prompt order, a menu that behaves differently on a
-given firmware revision) until someone actually runs it with
-`include_names: true` (or the "Include Names" toggle) on a disarmed system
-with someone watching the physical keypad, and compares the notification's
-raw results against what the panel shows. See "Testing" below.
+**Confirmed against real hardware** (2026-08-27 -- Ryan manually walked this
+exact sequence on his Vista-20P and photographed every screen). This
+superseded two earlier wrong guesses: an initial version built purely from
+the general programming guide, then a revision based on a more specific
+"20P Alpha Descriptor" addendum Ryan supplied -- both turned out to be
+wrong in ways only the manual walk-through caught. See "Testing" below for
+what's still open (the captured-text format for an *unprogrammed* zone).
 
 Runs once per scan, after the *56 walk finishes and exits back to the main
 menu -- not interleaved per zone, to avoid repeatedly entering/exiting two
@@ -162,39 +161,60 @@ different installer submenus:
 
 ```
 * 8 2          (enter *82 alpha descriptor programming -- once for the whole batch)
-1 *            (PROGRAM ALPHA? -> yes, then [*]/[#] to continue)
-0 *            (CUSTOM WORDS? -> no, standard descriptors, then [*] to continue)
-   ... the descriptor for zone 1 is now displayed automatically ...
-* <ZZ>         (for each other requested zone: jump directly to it)
-   ... capture the displayed descriptor text ...
-* 0 0          (return to PROGRAM ALPHA?)
-0              (PROGRAM ALPHA? -> no, exit without saving)
+1              (PROGRAM ALPHA? -> yes)
+0              (CUSTOM WORDS? -> no, standard descriptors)
+   ... lands on a "Zn 01" zone-number entry prompt, same shape as *56's
+       ENTER ZN NUM -- NOT on zone 1's descriptor automatically ...
+
+for each requested zone (including the first):
+  * <ZZ>       ([*] + zone number -- required for every zone, no exceptions)
+     ... immediately shows that zone's existing descriptor, WITH A
+         FLASHING CURSOR (edit mode) -- there is no read-only view ...
+     ... capture the displayed descriptor text ...
+  8            (saves -- re-commits whatever's currently shown -- and
+                returns to the Zn ## prompt for the next zone)
+
+* 0 0          (from the Zn ## prompt, once all zones are read: returns to PROGRAM ALPHA?)
+0              (PROGRAM ALPHA? -> no, exit without saving anything further)
 ```
 
-**Correction versus the general programming guide's wording, taken from
-the "20P Alpha Descriptor" addendum Ryan supplied** (not yet confirmed
-against real hardware the way the *56 corrections were): both the
-PROGRAM ALPHA? and CUSTOM WORDS? single-digit answers need a trailing
-`[*]`/`[#]` to actually submit -- the addendum explicitly documents
-"Press [∗] or [#] to continue" after PROGRAM ALPHA? and "Press [∗] to
-continue" after CUSTOM WORDS?, which the general guide's *82 section
-didn't spell out. This is the same pattern already confirmed for *56's
-`<ZZ>*` zone-number submission, just applied here on the strength of a
-clearer document rather than hardware testing yet. `*00` (return to
-PROGRAM ALPHA?) and the final bare `0` (exit without saving) are
-unchanged -- the addendum's exit description reads as a single combined
-sequence, same as before.
+Three corrections versus what was believed before this manual walk-through,
+all confirmed on real hardware:
 
-Per p.10-11: "Press [*] plus the desired zone number (existing descriptor,
-if any, displayed)... then press [*] plus the zone number *again*
-(flashing cursor appears)" to enter edit mode. **This code only ever sends
-the single `* <ZZ>` tap**, which the guide states displays the existing
-descriptor without a flashing cursor -- i.e. without entering edit mode.
-Nothing is ever written back through this path. The captured text is used
-as-is (`.strip()`'d) rather than sliced like the *56 summary screen's data
-row was -- that's an assumption about the display format that has not
-been cross-checked against real hardware the way the *56 slicing was, and
-may need the same kind of correction.
+* **PROGRAM ALPHA? and CUSTOM WORDS? each take a bare digit, no trailing
+  `[*]`/`[#]`.** The "20P Alpha Descriptor" addendum's wording ("Press [∗]
+  or [#] to continue") reads as if a confirm key is needed after the
+  digit, the same way *56's zone-number submission needs one. On this
+  hardware it isn't -- the bare digit alone immediately advances the
+  prompt. A prior version of this code sent `"1*"`/`"0*"`, which was wrong:
+  the trailing key doesn't confirm the current prompt, it lands on the
+  *next* one as its first keystroke.
+* **There is no "zone 1 displays automatically" shortcut, and no read-only
+  view at all.** CUSTOM WORDS? -> `0` lands on a zone-number entry prompt
+  (`"Zn 01"`), not on a descriptor. Every zone -- the first one included --
+  needs an explicit `[*]` + zone number, and that keystroke always drops
+  straight into a flashing-cursor edit field for that zone's descriptor.
+  There's no lesser "just look at it" mode.
+* **`[8]` is the only documented way back out of that field, and it's a
+  save, not a cancel.** It re-commits whatever's currently displayed --
+  which, since this code never touches the character-entry keys (`[#]` +
+  vocabulary code, `[6]`, digit entry) while the cursor is active, is
+  always exactly what was just read back unchanged. But mechanically this
+  means **every *82 read is a write**, not a passive one, unlike the *56
+  walk above. Functionally harmless (same value round-trips back in), but
+  worth knowing plainly rather than the "never writes anything" framing
+  this doc used to have.
+
+`*00` (from the Zn ## prompt, back to PROGRAM ALPHA?) and the final bare
+`0` (exit without saving) are unchanged from earlier guesses -- both are
+now confirmed correct.
+
+The captured text itself, for a zone that *does* have a descriptor set
+(e.g. `"FRONT DOOR"`), came back as plain text with no header noise, unlike
+the *56 summary screen's concatenated two-line format -- good news for the
+`.strip()`-only parsing already in place. What an *unprogrammed* zone's
+descriptor looks like when read this way is still unconfirmed -- see
+"Testing" below.
 
 ### Exiting
 
@@ -275,11 +295,16 @@ can't drift out of sync.
   descriptor read ever looks like an enrollment prompt, the whole run
   aborts (see above). This has not been tested against a system with any
   RF zones.
-* Name (from *82, via `include_names`) is wired in but **not yet
-  hardware-validated** the way zone type is -- see the *82 section above.
-  The finer-grained fields from the full *56 per-field walk (hardware loop
-  type, response time, report code, etc.) are intentionally not read, for
-  the reasons above.
+* Name (from *82, via `include_names`) has its **keystroke sequence
+  confirmed against real hardware** (2026-08-27, see the *82 section
+  above), but the captured-text format for an *unprogrammed* zone is
+  still unconfirmed -- see "Testing" below. Also note that, unlike zone
+  type, reading a name via *82 is mechanically a write each time (the
+  panel's only way back out of the descriptor field is `[8]`, which
+  re-saves what's shown) -- functionally harmless since this code never
+  edits the text first, but worth knowing. The finer-grained fields from
+  the full *56 per-field walk (hardware loop type, response time, report
+  code, etc.) are intentionally not read, for the reasons above.
 * Zone type -> HA `BinarySensorDeviceClass` mapping
   (`evl_Honeywell_Zone_Type_To_Device_Class` in
   `pyenvisalink/honeywell_envisalinkdefs.py`) is a best-effort convention
@@ -290,20 +315,22 @@ can't drift out of sync.
 
 ## Testing
 
-**The *56 zone-summary walk (keystrokes and alpha-text format above) has
-been confirmed against a real Vista-20P panel (2026-08-25)**; *82 alpha
-descriptor reading is now wired into `discover()` (`include_names`) but
-has **not** been separately validated yet (see above). Before trusting
-`include_names`/the "Include Names" toggle:
+**Both the *56 zone-summary walk and the *82 alpha-descriptor walk
+(keystrokes above) are now confirmed against a real Vista-20P panel** --
+*56 on 2026-08-25, *82 on 2026-08-27. What's left before fully trusting
+`include_names`/the "Include Names" toggle is narrower now: not the
+keystrokes themselves, but the captured-text format for a zone that has
+**no** descriptor set (blank vs. some panel-generated default like "ZONE
+02" -- unconfirmed either way).
 
 1. Turn on "Include Names" but leave "Apply Changes" off (or pass
    `include_names: true, apply: false` to the service), on a disarmed
    system, with someone physically at a keypad watching what the panel
    actually does when *82 comes up.
 2. Compare the notification's raw names against what you already know
-   each zone's descriptor to be, and watch for anything that looks like
-   the *56 header/data-row surprise (extra characters bleeding in from an
-   adjacent field, a prompt appearing in an unexpected order, etc.).
+   each zone's descriptor to be -- including at least one zone you know
+   has never had a name set, to see what an unprogrammed zone reads back
+   as.
 3. Only turn on "Apply Changes" (or pass `apply: true`) once you're
    confident the names are coming through correctly for your panel/
    firmware revision -- same as always applies to zone type, which is
