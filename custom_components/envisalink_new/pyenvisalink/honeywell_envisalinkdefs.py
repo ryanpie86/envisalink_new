@@ -976,8 +976,11 @@ evl_Honeywell_Zone_Types = {
     "08": "24-Hr Aux",
     "09": "Fire",
     "10": "Interior w/Delay",
+    "11": "Not Used",
     "12": "Monitor Zone",
+    "13": "Not Used",
     "14": "Carbon Monoxide",
+    "15": "Not Used",
     "16": "Fire w/Verify",
     "20": "Arm-STAY",
     "21": "Arm-AWAY",
@@ -1005,21 +1008,24 @@ evl_Honeywell_Zone_Type_To_Device_Class = {
     "02": "opening",
     "03": "opening",
     "04": "motion",
-    "05": "safety",
-    "06": "safety",
-    "07": "safety",
-    "08": "safety",
+    "05": "opening",  # Trouble Day/Alarm Night -- confirmed against real hardware
+    "06": "safety",  # 24-Hr Silent -- closest fit; HA has no "silent alarm" class
+    "07": "safety",  # 24-Hr Audible -- closest fit; HA has no "panic/audible alarm" class
+    "08": "safety",  # 24-Hr Aux -- typically fires a custom PGM output rather than a sensor
     "09": "smoke",
-    "10": "opening",
+    "10": "motion",  # Interior w/Delay -- confirmed against real hardware (was "opening")
+    "11": None,
     "12": "opening",
+    "13": None,
     "14": "carbon_monoxide",
+    "15": None,
     "16": "smoke",
     "20": None,
     "21": None,
     "22": None,
     "23": "opening",
     "24": "opening",
-    "77": None,
+    "77": "opening",  # Keyswitch -- confirmed against real hardware (was None)
     "81": "opening",
     "90": "opening",
     "91": "opening",
