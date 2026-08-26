@@ -23,19 +23,27 @@ of at arm/disarm.
 
 ## Source
 
-All keystroke sequences below are taken from the Honeywell/Ademco
-**VISTA-20P/VISTA-15P Programming Guide, K5305-1PRV5 (10/04)**, specifically:
+The *56 keystroke sequences below are taken from the Honeywell/Ademco
+**VISTA-20P/VISTA-15P Programming Guide, K5305-1PRV5 (10/04)**:
 
 * p.2 -- "PROGRAMMING MODE COMMANDS" (entering programming mode; the general
   "go to a data field" / "review a data field" conventions)
 * p.8 -- "*56 Zone Programming Menu Mode" (ENTER ZN NUM / SUMMARY SCREEN /
   the full per-zone field sequence)
-* p.10-11 -- "*82 Alpha Descriptor Programming" (viewing vs. editing an
-  existing zone descriptor)
 
-This was built and reviewed against that document; it has **not** been
-exercised against real hardware yet. See "Testing" below before relying on
-it.
+The *82 keystroke sequences are instead taken from a more specific
+reference Ryan supplied, a "20P Alpha Descriptor" addendum (p.10-11, "*82
+Alpha Descriptor Programming" -- covers viewing vs. editing an existing
+zone descriptor, plus the Alpha Vocabulary List and custom-word/ASCII
+character tables), which documents this menu's prompts more precisely than
+the general programming guide above did (e.g. explicitly calling out a
+trailing [*]/[#] after the PROGRAM ALPHA? and CUSTOM WORDS? answers, which
+the general guide's *82 section didn't spell out).
+
+Both were built and reviewed against their respective documents. The *56
+walk has since been **confirmed against real hardware** (2026-08-25, see
+below); the *82 walk has **not** been exercised against real hardware yet
+-- see "Testing" below before relying on it.
 
 ## What it actually sends
 
@@ -154,14 +162,28 @@ different installer submenus:
 
 ```
 * 8 2          (enter *82 alpha descriptor programming -- once for the whole batch)
-1              (PROGRAM ALPHA? -> yes)
-0              (CUSTOM WORDS? -> no, standard descriptors)
+1 *            (PROGRAM ALPHA? -> yes, then [*]/[#] to continue)
+0 *            (CUSTOM WORDS? -> no, standard descriptors, then [*] to continue)
    ... the descriptor for zone 1 is now displayed automatically ...
 * <ZZ>         (for each other requested zone: jump directly to it)
    ... capture the displayed descriptor text ...
 * 0 0          (return to PROGRAM ALPHA?)
 0              (PROGRAM ALPHA? -> no, exit without saving)
 ```
+
+**Correction versus the general programming guide's wording, taken from
+the "20P Alpha Descriptor" addendum Ryan supplied** (not yet confirmed
+against real hardware the way the *56 corrections were): both the
+PROGRAM ALPHA? and CUSTOM WORDS? single-digit answers need a trailing
+`[*]`/`[#]` to actually submit -- the addendum explicitly documents
+"Press [∗] or [#] to continue" after PROGRAM ALPHA? and "Press [∗] to
+continue" after CUSTOM WORDS?, which the general guide's *82 section
+didn't spell out. This is the same pattern already confirmed for *56's
+`<ZZ>*` zone-number submission, just applied here on the strength of a
+clearer document rather than hardware testing yet. `*00` (return to
+PROGRAM ALPHA?) and the final bare `0` (exit without saving) are
+unchanged -- the addendum's exit description reads as a single combined
+sequence, same as before.
 
 Per p.10-11: "Press [*] plus the desired zone number (existing descriptor,
 if any, displayed)... then press [*] plus the zone number *again*

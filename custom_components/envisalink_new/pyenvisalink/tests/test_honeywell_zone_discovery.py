@@ -231,13 +231,15 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
     def test_include_names_reads_82_descriptors_after_56_walk(self):
         # include_names=True should, after the normal *56 walk finishes and
         # exits back to the main menu, enter *82 exactly once for the whole
-        # batch (PROGRAM ALPHA? -> yes, CUSTOM WORDS? -> no, which itself
-        # displays zone 1's descriptor), then jump straight to each other
-        # requested zone with "*NN" the way "go to a data field" works
-        # elsewhere in the programming guide, and finally back out with
-        # "*00" then "0". NOT confirmed against real hardware yet -- see
-        # _read_zone_descriptors' docstring -- this test only locks in the
-        # intended keystroke sequence and result wiring.
+        # batch: PROGRAM ALPHA? -> "1*" (yes, then [*] to continue -- this
+        # prompt explicitly documents a trailing [*]/[#], unlike *56's bare-
+        # digit SET TO CONFIRM? answer), CUSTOM WORDS? -> "0*" (no, then
+        # [*] to continue, which itself displays zone 1's descriptor), then
+        # jump straight to each other requested zone with "*NN", and finally
+        # back out with "*00" then "0". Confirmed against the VISTA-20P
+        # Alpha Descriptor reference doc (2026-08-27) for the keystrokes;
+        # the captured-text format is still NOT confirmed against real
+        # hardware -- see _read_zone_descriptors' docstring.
         summary_1 = _summary("Zn ZT P RC HW:RT", "01 01 1 10 EL:1 ")
         summary_2 = _summary("Zn ZT P RC HW:RT", "02 09 1 10 EL:1 ")
         client = _FakeClient(
@@ -252,8 +254,8 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "Enter Zn Num.   (00=Quit)     03",  # "#"
                 "MAIN MENU",  # "00" (exit *56)
                 "PROGRAM ALPHA?",  # "*82"
-                "CUSTOM WORDS?",  # "1"
-                "FRONT DOOR      ",  # "0" -> zone 1's descriptor
+                "CUSTOM WORDS?",  # "1*"
+                "FRONT DOOR      ",  # "0*" -> zone 1's descriptor
                 "BACK DOOR       ",  # "*02" -> zone 2's descriptor
                 "PROGRAM ALPHA?",  # "*00" (back out)
                 "DATA MODE",  # "0" (exit *82)
@@ -276,8 +278,8 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "#",
                 "00",
                 "*82",
-                "1",
-                "0",
+                "1*",
+                "0*",
                 "*02",
                 "*00",
                 "0",

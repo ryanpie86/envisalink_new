@@ -295,21 +295,25 @@ class HoneywellZoneDiscovery:
         """Use *82 to view (not edit) the currently-assigned name for each zone.
 
         NOT YET VALIDATED AGAINST REAL HARDWARE (unlike the *56 walk above)
-        -- built against the programming guide's p.10-11 "*82 Alpha
-        Descriptor Programming" section and the same "go to a data field"
-        jump convention already confirmed for *56 (typing a field number
-        jumps straight there), but the exact captured-text format has not
-        been cross-checked the way the *56 SUMMARY SCREEN format was (see
+        -- built against a specific programming reference for this menu
+        ("*82 Alpha Descriptor Programming", VISTA-20P Alpha Descriptor
+        addendum, p.10), which is more precise here than the general
+        programming guide *56 was originally built against. That precision
+        is why this now sends an explicit [*] after both the PROGRAM ALPHA?
+        and CUSTOM WORDS? answers (see below) instead of a bare digit --
+        but the exact captured-text format still has not been cross-checked
+        against a real panel the way the *56 SUMMARY SCREEN format was (see
         `_parse_zone_type_from_summary`'s docstring for how wrong a guess
-        here can be). Test with `include_names` on and `apply` off first,
-        on a disarmed system with someone watching the physical keypad, and
-        compare the notification's raw text against what the panel
-        actually shows -- see docs/zone_discovery.md "Testing".
+        here can be, even when the keystrokes themselves are right). Test
+        with `include_names` on and `apply` off first, on a disarmed system
+        with someone watching the physical keypad, and compare the
+        notification's raw text against what the panel actually shows --
+        see docs/zone_discovery.md "Testing".
 
         Enters *82 once for the whole batch (mirroring `_enter_zone_menu`
         for *56) rather than once per zone, to avoid repeatedly entering
-        and exiting installer-programming submenus. Per the programming
-        guide, pressing [*] + zone number *once* displays a zone's existing
+        and exiting installer-programming submenus. Per the reference:
+        pressing [*] + zone number *once* displays a zone's existing
         descriptor; only a *second* [*] + zone number enters edit mode
         (flashing cursor). This only ever sends the single tap, and never
         writes anything.
@@ -320,12 +324,19 @@ class HoneywellZoneDiscovery:
         await self._send("*82")
         await self._await_alpha_change(baseline)
 
+        # PROGRAM ALPHA? -> 1 = yes, then "Press [*] or [#] to continue."
+        # (explicitly documented for this prompt, unlike *56's bare-digit
+        # SET TO CONFIRM? answer -- sent as one combined keystroke batch,
+        # same pattern as *56's "<ZZ>*" zone-number submission.)
         baseline = self._current_alpha()
-        await self._send("1")  # PROGRAM ALPHA? -> yes
+        await self._send("1*")
         await self._await_alpha_change(baseline)
 
+        # CUSTOM WORDS? -> 0 = no (standard descriptors), then "Press [*] to
+        # continue" -- after which "the system will then display the
+        # descriptor for zone 1" automatically.
         baseline = self._current_alpha()
-        await self._send("0")  # CUSTOM WORDS? -> no (standard descriptors, starts at zone 1)
+        await self._send("0*")
         descriptor_zone1 = await self._await_alpha_change(baseline)
         self._check_for_wireless_prompt(descriptor_zone1, 1)
 
@@ -341,8 +352,12 @@ class HoneywellZoneDiscovery:
             descriptors[zone] = descriptor.strip() or None
             _LOGGER.info("Zone discovery: zone %s descriptor -> %r", zone, descriptors[zone])
 
-        # Back out: *+0+0 returns to PROGRAM ALPHA?, then 0 = no exits to
-        # data-field mode without saving anything.
+        # Back out: per the reference, "[*] + 0 + 0 (or simply [#])" returns
+        # to the PROGRAM ALPHA? prompt; documented in the context of
+        # finishing an edit, but this is the only documented way back to
+        # that prompt, so it's used here too even though we only ever
+        # viewed (never edited) descriptors. Then 0 = no exits to data-field
+        # mode without saving anything.
         baseline = self._current_alpha()
         await self._send("*00")
         with contextlib.suppress(ZoneDiscoveryError):
