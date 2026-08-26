@@ -83,11 +83,14 @@ real hardware:
   Only once every zone you want has been read is `00` sent, from ENTER ZN
   NUM, to leave *56 entirely -- and *that* keystroke, unlike a real zone
   number, needs no `[*]` or `[#]` to submit.
-* **Recommended zone range**: 1-64 and 91-99 are the only valid zone
-  numbers on a Vista-20P/15P (65-90 aren't valid zone numbers on this
-  panel and must never be sent to the ENTER ZN NUM prompt) -- scanning
-  that full range, not just the zones already configured, is how you find
-  zones that haven't been added to `zone_set` yet.
+* **Zone range**: 1-64 and 91-99 are the only valid zone numbers on a
+  Vista-20P/15P (65-90 aren't valid zone numbers on this panel and must
+  never be sent to the ENTER ZN NUM prompt). `discover()` always scans
+  this full range (`FULL_ZONE_SCAN_RANGE`), not just the zones already
+  configured in `zone_set` -- the `discover_zone_info` service has no
+  "which zones" option for exactly this reason: the point of discovery is
+  finding zones that haven't been configured yet, so there's nothing for
+  a caller to usefully aim it at.
 * **Pacing**: Vista panels are slow. On top of waiting for the alpha
   display to actually change/settle (below), a flat ~1 second pause after
   every keystroke send is needed too.

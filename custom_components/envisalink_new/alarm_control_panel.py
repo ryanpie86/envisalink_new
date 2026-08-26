@@ -25,7 +25,6 @@ from .const import (
     CONF_PARTITIONNAME,
     CONF_PARTITIONS,
     CONF_SHOW_KEYPAD,
-    CONF_ZONE_SET,
     CONF_ZONENAME,
     CONF_ZONES,
     CONF_ZONETYPE,
@@ -48,7 +47,10 @@ from .pyenvisalink.const import (
     PANEL_TYPE_UNO,
     STATE_CHANGE_PARTITION,
 )
-from .pyenvisalink.honeywell_zone_discovery import ZoneDiscoveryError
+from .pyenvisalink.honeywell_zone_discovery import (
+    FULL_ZONE_SCAN_RANGE,
+    ZoneDiscoveryError,
+)
 
 SERVICE_ALARM_KEYPRESS = "alarm_keypress"
 ATTR_KEYPRESS = "keypress"
@@ -65,7 +67,6 @@ SERVICE_SCHEMA = vol.Schema(
 )
 
 SERVICE_DISCOVER_ZONE_INFO = "discover_zone_info"
-ATTR_ZONES = "zones"
 ATTR_APPLY = "apply"
 
 
@@ -136,7 +137,6 @@ async def async_setup_entry(
         platform.async_register_entity_service(
             SERVICE_DISCOVER_ZONE_INFO,
             {
-                vol.Optional(ATTR_ZONES): [cv.positive_int],
                 vol.Optional(ATTR_APPLY, default=False): cv.boolean,
             },
             "async_discover_zone_info",
@@ -308,7 +308,7 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             self.code_or_default_code(code), self._partition_number, pgm
         )
 
-    async def async_discover_zone_info(self, zones=None, apply=False):
+    async def async_discover_zone_info(self, apply=False):
         """Read zone names/types back from the panel's own installer programming.
 
         See pyenvisalink/honeywell_zone_discovery.py for exactly what this
@@ -317,6 +317,12 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         programming -- but it does briefly place the panel into installer
         programming mode, so it refuses to run unless the partition is
         disarmed, and it is only offered for Honeywell/Vista panels.
+
+        Always scans FULL_ZONE_SCAN_RANGE (every valid zone number on a
+        Vista-20P/15P: 1-64 and 91-99), not just the zones already
+        configured for this integration -- the whole point of discovery is
+        finding zones that haven't been added to `zone_set` yet, so there's
+        nothing for the caller to aim it at.
 
         With apply=False (the default), results are only logged and posted
         as a persistent notification -- nothing about your configured zone
@@ -335,17 +341,9 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
                 "zone discovery."
             )
 
-        if zones is None:
-            zone_spec = config_entry.data.get(CONF_ZONE_SET, "")
-            zones = parse_range_string(
-                zone_spec, min_val=1, max_val=self._controller.controller.max_zones
-            )
-        if not zones:
-            raise HomeAssistantError("No zones to discover (none configured or none requested).")
-
         try:
             results = await self._controller.controller.discover_zone_info(
-                installer_code, self._partition_number, zones
+                installer_code, self._partition_number, FULL_ZONE_SCAN_RANGE
             )
         except ZoneDiscoveryError as err:
             LOGGER.error("Zone discovery failed: %s", err)

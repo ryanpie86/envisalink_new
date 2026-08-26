@@ -47,27 +47,22 @@ discover_zone_info:
   description: >
     Reads zone names and types directly from the panel's own installer
     programming (*56/*82), the same data an installer would read off a
-    physical alpha keypad. This is a read-only operation, but it briefly
-    puts the panel into installer programming mode, so it requires the
-    partition to be disarmed and requires an installer code to be set on
-    this integration's Basic options page first. Only available for
-    Honeywell/Vista panels. See docs/zone_discovery.md for full details,
-    the exact keystrokes used, and its current limitations (e.g. wireless
-    zones are not supported yet).
+    physical alpha keypad. Always scans every valid zone number for a
+    Vista-20P/15P (1-64 and 91-99), not just the zones already configured
+    for this integration -- the point of discovery is finding zones you
+    haven't set up yet, so there's nothing to aim it at. This is a
+    read-only operation, but it briefly puts the panel into installer
+    programming mode, so it requires the partition to be disarmed and
+    requires an installer code to be set on this integration's Basic
+    options page first. Only available for Honeywell/Vista panels. See
+    docs/zone_discovery.md for full details, the exact keystrokes used,
+    and its current limitations (e.g. wireless zones are not supported
+    yet).
   target:
     entity:
       integration: envisalink_new
       domain: alarm_control_panel
   fields:
-    zones:
-      name: Zones
-      description: >
-        Which zone numbers to read. Defaults to every zone configured for
-        this integration if not given.
-      required: false
-      example: [9, 10, 11]
-      selector:
-        object:
     apply:
       name: Apply
       description: >
