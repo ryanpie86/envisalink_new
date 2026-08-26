@@ -44,7 +44,9 @@
           "partition_set": "[%key:component::envisalink::config::step::user::data::partition_set%]",
           "zone_set": "[%key:component::envisalink::config::step::user::data::zone_set%]",
           "code": "[%key:component::envisalink::config::step::user::data::code%]",
-          "discovery_port": "[%key:component::envisalink::config::step::user::data::discovery_port%]"
+          "discovery_port": "[%key:component::envisalink::config::step::user::data::discovery_port%]",
+          "installer_code": "Installer code (for zone discovery)",
+          "panel_model": "Panel model (for zone discovery)"
         }
       },
       "advanced": {
@@ -105,6 +107,11 @@
         "Fire": "Fire",
         "Ambulance": "Ambulance",
         "Police": "Police"
+      }
+    },
+    "panel_model": {
+      "options": {
+        "vista_20p": "Vista 20P (Non-ADT Panels Only)"
       }
     }
   },

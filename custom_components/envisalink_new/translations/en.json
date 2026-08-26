@@ -44,7 +44,9 @@
           "partition_set": "Partition list",
           "zone_set": "Zone list",
           "code": "Alarm code",
-          "discovery_port": "Discovery port"
+          "discovery_port": "Discovery port",
+          "installer_code": "Installer code (for zone discovery)",
+          "panel_model": "Panel model (for zone discovery)"
         }
       },
       "advanced": {
@@ -105,6 +107,11 @@
         "Fire": "Fire",
         "Ambulance": "Ambulance",
         "Police": "Police"
+      }
+    },
+    "panel_model": {
+      "options": {
+        "vista_20p": "Vista 20P (Non-ADT Panels Only)"
       }
     }
   },

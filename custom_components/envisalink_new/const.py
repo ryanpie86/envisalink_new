@@ -35,6 +35,14 @@ CONF_PARTITION_ASSIGNMENTS = "partition_assignments"
 # HA's own config entry storage) as the end-user alarm CONF_CODE above --
 # see docs/zone_discovery.md for why this is needed and what it's used for.
 CONF_INSTALLER_CODE = "installer_code"
+# Which physical panel model the zone-discovery feature should target --
+# the *56 keystroke sequence, valid zone-number range, and zone-type table
+# it uses are all specific to a panel model/family. Only one option exists
+# today (Vista-20P, which this feature was built and hardware-validated
+# against); this is here so a future revision can add other models without
+# a breaking config change. See claude/envisalink-zone-discovery.md (or
+# docs/zone_discovery.md) "Known open items" for the plan.
+CONF_PANEL_MODEL = "panel_model"
 
 
 # Config items used only in the YAML config
@@ -50,6 +58,11 @@ CONF_YAML_OPTIONS = "yaml_options"
 
 HONEYWELL_ARM_MODE_INSTANT_VALUE = "7"
 HONEYWELL_ARM_MODE_NIGHT_VALUE = "33"
+
+# Panel model values for CONF_PANEL_MODEL. "Non-ADT" because ADT-branded
+# Vista panels use a locked-down installer code/menu structure that this
+# feature has not been validated against.
+PANEL_MODEL_VISTA_20P = "vista_20p"
 
 SHOW_KEYPAD_NEVER_VALUE = "never"
 SHOW_KEYPAD_DISARM_VALUE = "disarm"
@@ -70,6 +83,7 @@ DEFAULT_ZONEDUMP_INTERVAL = 30
 DEFAULT_ZONETYPE = BinarySensorDeviceClass.OPENING
 DEFAULT_HONEYWELL_ARM_NIGHT_MODE = HONEYWELL_ARM_MODE_NIGHT_VALUE
 DEFAULT_SHOW_KEYPAD = SHOW_KEYPAD_ALWAYS_VALUE
+DEFAULT_PANEL_MODEL = PANEL_MODEL_VISTA_20P
 
 DEFAULT_CODE_ARM_REQUIRED = {
     PANEL_TYPE_DSC: False,

@@ -23,6 +23,7 @@ from .const import (
     CONF_EVL_VERSION,
     CONF_HONEYWELL_ARM_NIGHT_MODE,
     CONF_INSTALLER_CODE,
+    CONF_PANEL_MODEL,
     CONF_PANEL_TYPE,
     CONF_PANIC,
     CONF_PARTITION_ASSIGNMENTS,
@@ -39,6 +40,7 @@ from .const import (
     DEFAULT_EVL_VERSION,
     DEFAULT_HONEYWELL_ARM_NIGHT_MODE,
     DEFAULT_KEEPALIVE,
+    DEFAULT_PANEL_MODEL,
     DEFAULT_PANIC,
     DEFAULT_PARTITION_SET,
     DEFAULT_PORT,
@@ -49,6 +51,7 @@ from .const import (
     HONEYWELL_ARM_MODE_INSTANT_VALUE,
     HONEYWELL_ARM_MODE_NIGHT_VALUE,
     LOGGER,
+    PANEL_MODEL_VISTA_20P,
     SHOW_KEYPAD_ALWAYS_VALUE,
     SHOW_KEYPAD_DISARM_VALUE,
     SHOW_KEYPAD_NEVER_VALUE,
@@ -474,6 +477,20 @@ def _get_user_data_schema(
                 default="",
             )
         ] = cv.string
+        # Which panel model the zone-discovery feature (*56 keystroke walk)
+        # should target. Only one option exists today -- see const.py.
+        schema[
+            vol.Optional(
+                CONF_PANEL_MODEL,
+                default=defaults[CONF_PANEL_MODEL],
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[PANEL_MODEL_VISTA_20P],
+                translation_key=CONF_PANEL_MODEL,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
 
     return vol.Schema(schema)
 
@@ -493,5 +510,6 @@ def _get_user_data_defaults(data=None):
         CONF_EVL_PORT: data.get(CONF_EVL_PORT, DEFAULT_PORT),
         CONF_EVL_DISCOVERY_PORT: data.get(CONF_EVL_DISCOVERY_PORT, DEFAULT_DISCOVERY_PORT),
         CONF_INSTALLER_CODE: data.get(CONF_INSTALLER_CODE, ""),
+        CONF_PANEL_MODEL: data.get(CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL),
     }
     return config_defaults

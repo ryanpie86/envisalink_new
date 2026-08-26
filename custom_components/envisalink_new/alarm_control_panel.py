@@ -12,29 +12,22 @@ from homeassistant.components.alarm_control_panel import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_CODE
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_CODE_ARM_REQUIRED,
     CONF_HONEYWELL_ARM_NIGHT_MODE,
-    CONF_INSTALLER_CODE,
     CONF_PANIC,
     CONF_PARTITION_SET,
     CONF_PARTITIONNAME,
     CONF_PARTITIONS,
     CONF_SHOW_KEYPAD,
-    CONF_ZONE_SET,
-    CONF_ZONENAME,
-    CONF_ZONES,
-    CONF_ZONETYPE,
     DEFAULT_CODE_ARM_REQUIRED,
     DEFAULT_HONEYWELL_ARM_NIGHT_MODE,
     DEFAULT_PANIC,
     DEFAULT_PARTITION_SET,
     DEFAULT_SHOW_KEYPAD,
-    DEFAULT_ZONE_SET,
     DOMAIN,
     HONEYWELL_ARM_MODE_INSTANT_VALUE,
     LOGGER,
@@ -45,7 +38,6 @@ from .const import (
 from .helpers import (
     find_yaml_info,
     generate_entity_setup_info,
-    generate_range_string,
     parse_range_string,
 )
 from .models import EnvisalinkDevice
@@ -54,10 +46,7 @@ from .pyenvisalink.const import (
     PANEL_TYPE_UNO,
     STATE_CHANGE_PARTITION,
 )
-from .pyenvisalink.honeywell_zone_discovery import (
-    FULL_ZONE_SCAN_RANGE,
-    ZoneDiscoveryError,
-)
+from .zone_discovery import async_run_zone_discovery
 
 SERVICE_ALARM_KEYPRESS = "alarm_keypress"
 ATTR_KEYPRESS = "keypress"
@@ -348,111 +337,18 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         (and clear its now-orphaned name/type override, if any), so an
         entity stops being created for it. Requires apply=True since
         remove_unused has nothing to do on a dry run.
+
+        This runs the same discovery walk shared with the "Discover Zone
+        Info" button entity -- see zone_discovery.py.
         """
-        config_entry = self._controller.config_entry
-        installer_code = config_entry.data.get(CONF_INSTALLER_CODE)
-        if not installer_code:
-            raise HomeAssistantError(
-                "No installer code is configured for this integration. Set one on "
-                "the integration's Basic options page (Settings > Devices & "
-                "services > this integration > Configure > Basic) before using "
-                "zone discovery."
-            )
-        if remove_unused and not apply:
-            raise HomeAssistantError(
-                "remove_unused requires apply: true -- there's nothing to remove on a dry run."
-            )
-
-        try:
-            results = await self._controller.controller.discover_zone_info(
-                installer_code, self._partition_number, FULL_ZONE_SCAN_RANGE
-            )
-        except ZoneDiscoveryError as err:
-            LOGGER.error("Zone discovery failed: %s", err)
-            raise HomeAssistantError(f"Zone discovery failed: {err}") from err
-
-        summary_lines = [
-            f"Zone {zone}: name={info['name']!r}, "
-            f"type={info['zone_type_label'] or info['zone_type']} "
-            f"(device_class={info['device_class']})"
-            for zone, info in sorted(results.items())
-        ]
-        LOGGER.info("Zone discovery results:\n%s", "\n".join(summary_lines))
-
-        removed_zones: set[int] = set()
-        if remove_unused:
-            zone_spec = config_entry.data.get(CONF_ZONE_SET, DEFAULT_ZONE_SET)
-            configured_zones = set(
-                parse_range_string(
-                    zone_spec, min_val=1, max_val=self._controller.controller.max_zones
-                )
-                or []
-            )
-            removed_zones = configured_zones & {
-                zone for zone, info in results.items() if info["zone_type"] == "00"
-            }
-
-        await self.hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "title": "Envisalink zone discovery",
-                "notification_id": f"{DOMAIN}_zone_discovery_{config_entry.entry_id}",
-                "message": (
-                    ("Applied to zone names/types below.\n\n" if apply else "")
-                    + ("Dry run -- nothing was changed. Pass apply: true to save these.\n\n" if not apply else "")
-                    + (
-                        f"Removed unused zone(s) from zone_set: {sorted(removed_zones)}\n\n"
-                        if removed_zones
-                        else ""
-                    )
-                    + "\n".join(summary_lines)
-                ),
-            },
-            blocking=False,
+        await async_run_zone_discovery(
+            self.hass,
+            self._controller,
+            self._controller.config_entry,
+            self._partition_number,
+            apply=apply,
+            remove_unused=remove_unused,
         )
-
-        if apply:
-            new_zone_data = dict(config_entry.data.get(CONF_ZONES) or {})
-            for zone, info in results.items():
-                if not info["name"] and not info["device_class"]:
-                    continue
-                existing = dict(new_zone_data.get(str(zone), {}))
-                if info["name"]:
-                    existing[CONF_ZONENAME] = info["name"]
-                if info["device_class"]:
-                    existing[CONF_ZONETYPE] = info["device_class"]
-                new_zone_data[str(zone)] = existing
-
-            new_data = dict(config_entry.data)
-
-            if removed_zones:
-                for zone in removed_zones:
-                    new_zone_data.pop(str(zone), None)
-
-                zone_spec = config_entry.data.get(CONF_ZONE_SET, DEFAULT_ZONE_SET)
-                configured_zones = set(
-                    parse_range_string(
-                        zone_spec, min_val=1, max_val=self._controller.controller.max_zones
-                    )
-                    or []
-                )
-                new_data[CONF_ZONE_SET] = (
-                    generate_range_string(configured_zones - removed_zones) or DEFAULT_ZONE_SET
-                )
-                LOGGER.info(
-                    "Zone discovery: removed %d unused zone(s) from zone_set: %s",
-                    len(removed_zones),
-                    sorted(removed_zones),
-                )
-
-            new_data[CONF_ZONES] = new_zone_data
-            self.hass.config_entries.async_update_entry(config_entry, data=new_data)
-            LOGGER.info(
-                "Zone discovery: wrote %d zone(s) into config entry %s",
-                len(new_zone_data),
-                config_entry.entry_id,
-            )
 
     def _is_night_mode(self) -> bool:
         if self._controller.controller.panel_type == PANEL_TYPE_HONEYWELL:

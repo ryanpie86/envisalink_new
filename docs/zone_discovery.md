@@ -191,6 +191,30 @@ step above raised.
   mode indefinitely.
 * Program-mode exit (`*99`) always runs, including on error/cancellation.
 
+## Panel model and UI
+
+This whole feature -- the keystroke sequence, `FULL_ZONE_SCAN_RANGE`
+(1-64), and the zone-type table -- was built and validated against a
+**Vista-20P** specifically. There is now a **Panel model** option on the
+integration's Basic options page (alongside the installer code), but it
+currently offers exactly one choice, "Vista 20P (Non-ADT Panels Only)"
+(`CONF_PANEL_MODEL` / `PANEL_MODEL_VISTA_20P` in `const.py`), and nothing
+branches on it yet -- it exists so a future revision can add other panel
+models without a breaking config change, at which point the keystrokes,
+zone range, and type table would need to branch per model.
+
+For convenience, a **"Discover Zone Info" button** entity is also created
+under the alarm panel's device (next to the Panic A/B/C buttons), but only
+when the panel type is Honeywell *and* the configured panel model is
+Vista-20P. Pressing it always runs a dry run (`apply: false,
+remove_unused: false`) and posts the same persistent-notification results
+as calling the service that way -- a button can't prompt for parameters,
+so `apply`/`remove_unused` are still only available by calling
+`envisalink_new.discover_zone_info` directly (Developer Tools > Actions)
+with those set to `true`. The button and the service share the exact same
+underlying code path (`zone_discovery.async_run_zone_discovery`) so they
+can't drift out of sync.
+
 ## Current limitations (left for follow-up PRs)
 
 * Wireless zones aren't supported -- if a zone's summary screen or
