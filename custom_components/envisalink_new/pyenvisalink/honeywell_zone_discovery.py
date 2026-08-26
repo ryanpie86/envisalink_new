@@ -291,13 +291,31 @@ class HoneywellZoneDiscovery:
             return f"{int(candidate):02d}"
         return None
 
-    async def _read_zone_descriptor(self, zone: int) -> str | None:
-        """Use *82 to view (not edit) the currently-assigned name for a zone.
+    async def _read_zone_descriptors(self, zones: list[int]) -> dict[int, str | None]:
+        """Use *82 to view (not edit) the currently-assigned name for each zone.
 
-        Per the programming guide: pressing [*] + zone number *once* displays
-        the zone's existing descriptor; only a *second* [*] + zone number
-        enters edit mode (flashing cursor). We only ever send the single tap.
+        NOT YET VALIDATED AGAINST REAL HARDWARE (unlike the *56 walk above)
+        -- built against the programming guide's p.10-11 "*82 Alpha
+        Descriptor Programming" section and the same "go to a data field"
+        jump convention already confirmed for *56 (typing a field number
+        jumps straight there), but the exact captured-text format has not
+        been cross-checked the way the *56 SUMMARY SCREEN format was (see
+        `_parse_zone_type_from_summary`'s docstring for how wrong a guess
+        here can be). Test with `include_names` on and `apply` off first,
+        on a disarmed system with someone watching the physical keypad, and
+        compare the notification's raw text against what the panel
+        actually shows -- see docs/zone_discovery.md "Testing".
+
+        Enters *82 once for the whole batch (mirroring `_enter_zone_menu`
+        for *56) rather than once per zone, to avoid repeatedly entering
+        and exiting installer-programming submenus. Per the programming
+        guide, pressing [*] + zone number *once* displays a zone's existing
+        descriptor; only a *second* [*] + zone number enters edit mode
+        (flashing cursor). This only ever sends the single tap, and never
+        writes anything.
         """
+        descriptors: dict[int, str | None] = {}
+
         baseline = self._current_alpha()
         await self._send("*82")
         await self._await_alpha_change(baseline)
@@ -309,15 +327,19 @@ class HoneywellZoneDiscovery:
         baseline = self._current_alpha()
         await self._send("0")  # CUSTOM WORDS? -> no (standard descriptors, starts at zone 1)
         descriptor_zone1 = await self._await_alpha_change(baseline)
+        self._check_for_wireless_prompt(descriptor_zone1, 1)
 
-        if zone == 1:
-            descriptor = descriptor_zone1
-        else:
-            baseline = self._current_alpha()
-            await self._send(f"*{zone:02d}")
-            descriptor = await self._await_alpha_change(baseline)
+        for zone in zones:
+            if zone == 1:
+                descriptor = descriptor_zone1
+            else:
+                baseline = self._current_alpha()
+                await self._send(f"*{zone:02d}")
+                descriptor = await self._await_alpha_change(baseline)
+                self._check_for_wireless_prompt(descriptor, zone)
 
-        self._check_for_wireless_prompt(descriptor, zone)
+            descriptors[zone] = descriptor.strip() or None
+            _LOGGER.info("Zone discovery: zone %s descriptor -> %r", zone, descriptors[zone])
 
         # Back out: *+0+0 returns to PROGRAM ALPHA?, then 0 = no exits to
         # data-field mode without saving anything.
@@ -331,27 +353,30 @@ class HoneywellZoneDiscovery:
         with contextlib.suppress(ZoneDiscoveryError):
             await self._await_alpha_change(baseline, timeout=3.0)
 
-        return descriptor.strip() or None
+        return descriptors
 
-    async def discover(self, installer_code: str, zones: list[int]) -> dict[int, dict]:
-        """Read back type for each zone in `zones` via the *56 summary screen.
+    async def discover(
+        self, installer_code: str, zones: list[int], include_names: bool = False
+    ) -> dict[int, dict]:
+        """Read back type (and optionally name) for each zone in `zones`.
 
-        `name` (from *82 alpha descriptors) is temporarily disabled while
-        the *56 zone-type walk above is being validated against real
-        hardware -- see `_read_zone_descriptor`, which is unused for now
-        but left in place for when that validation happens. Every result's
-        "name" is currently always None.
+        Zone type always comes from the *56 SUMMARY SCREEN walk, confirmed
+        against real hardware. Pass include_names=True to also read each
+        zone's *82 alpha descriptor as its "name" -- see
+        `_read_zone_descriptors` for why that path is NOT YET validated
+        against real hardware the way *56 is, and test it cautiously.
 
-        Returns {zone_number: {"name": None, "zone_type": str | None,
+        Returns {zone_number: {"name": str | None, "zone_type": str | None,
         "zone_type_label": str | None, "device_class": str | None,
         "raw_summary": str | None}}.
         """
         return await asyncio.wait_for(
-            self._discover_inner(installer_code, zones), timeout=OVERALL_TIMEOUT
+            self._discover_inner(installer_code, zones, include_names),
+            timeout=OVERALL_TIMEOUT,
         )
 
     async def _discover_inner(
-        self, installer_code: str, zones: list[int]
+        self, installer_code: str, zones: list[int], include_names: bool = False
     ) -> dict[int, dict]:
         results: dict[int, dict] = {}
         await self._enter_program_mode(installer_code)
@@ -380,6 +405,12 @@ class HoneywellZoneDiscovery:
             await self._send("00")
             with contextlib.suppress(ZoneDiscoveryError):
                 await self._await_alpha_change(baseline, timeout=3.0)
+
+            if include_names:
+                descriptors = await self._read_zone_descriptors(zones)
+                for zone, name in descriptors.items():
+                    if zone in results:
+                        results[zone]["name"] = name
         finally:
             await self._exit_program_mode()
 

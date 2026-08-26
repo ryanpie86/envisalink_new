@@ -12,12 +12,18 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     CONF_CREATE_ZONE_BYPASS_SWITCHES,
+    CONF_PANEL_MODEL,
     CONF_PANEL_TYPE,
     CONF_ZONE_SET,
     CONF_ZONENAME,
     CONF_ZONES,
+    DEFAULT_PANEL_MODEL,
     DOMAIN,
     LOGGER,
+    PANEL_MODEL_VISTA_20P,
+    ZONE_DISCOVERY_APPLY_SUFFIX,
+    ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
+    ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
 )
 from .helpers import (
     build_zone_to_partition_map,
@@ -25,7 +31,7 @@ from .helpers import (
     generate_entity_setup_info,
     parse_range_string,
 )
-from .models import EnvisalinkDevice
+from .models import EnvisalinkDevice, EnvisalinkZoneScanDevice
 from .pyenvisalink.const import (
     PANEL_TYPE_DSC,
     PANEL_TYPE_HONEYWELL,
@@ -69,6 +75,35 @@ async def async_setup_entry(
                     zone_to_partition_map[zone_num],
                 )
                 entities.append(entity)
+
+    # Zone-discovery mode toggles, on the separate "Zone Scan" device (see
+    # models.EnvisalinkZoneScanDevice) alongside the "Discover Zone Info"
+    # button in button.py. Same gating as that button: Honeywell + panel
+    # model Vista-20P only.
+    if panel_type == PANEL_TYPE_HONEYWELL and entry.data.get(
+        CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL
+    ) == PANEL_MODEL_VISTA_20P:
+        entities.append(
+            EnvisalinkZoneDiscoveryToggle(
+                controller,
+                f"{controller.unique_id}_{ZONE_DISCOVERY_APPLY_SUFFIX}",
+                "Apply Changes",
+            )
+        )
+        entities.append(
+            EnvisalinkZoneDiscoveryToggle(
+                controller,
+                f"{controller.unique_id}_{ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX}",
+                "Include Names",
+            )
+        )
+        entities.append(
+            EnvisalinkZoneDiscoveryToggle(
+                controller,
+                f"{controller.unique_id}_{ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX}",
+                "Remove Unused Zones",
+            )
+        )
 
     async_add_entities(entities)
 
@@ -189,3 +224,45 @@ class EnvisalinkChimeSwitch(EnvisalinkDevice, SwitchEntity, RestoreEntity):
 
         if self._chime_status != False:
             await self._controller.controller.toggle_chime(self._controller.default_code)
+
+
+class EnvisalinkZoneDiscoveryToggle(EnvisalinkZoneScanDevice, SwitchEntity):
+    """One of the three toggles the "Discover Zone Info" button reads at press time.
+
+    Together (Apply Changes / Include Names / Remove Unused Zones) these
+    replace what used to be a single 5-option mode dropdown, since these
+    three plain on/off toggles cover the same 5 meaningful combinations
+    (all three sub-options are ignored -- effectively a no-op preview --
+    whenever Apply Changes is off) without a fixed enum of combo strings
+    that would need a new entry for every future option. See button.py's
+    `EnvisalinkZoneDiscoveryButton._current_settings`.
+
+    None of these persist across an HA restart -- they always come back up
+    off, so a forgotten "on" toggle can't silently carry over into a scan
+    run after a restart. This is deliberate, not an oversight.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_is_on = False
+
+    def __init__(
+        self,
+        controller,
+        unique_id: str,
+        name: str,
+    ) -> None:
+        """Initialize one zone-discovery toggle switch."""
+        self._attr_unique_id = unique_id
+        self._attr_name = name
+        super().__init__(name, controller, None, None)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the toggle on."""
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the toggle off."""
+        self._attr_is_on = False
+        self.async_write_ha_state()

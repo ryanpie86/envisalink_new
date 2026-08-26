@@ -89,3 +89,16 @@ discover_zone_info:
       default: false
       selector:
         boolean:
+    include_names:
+      name: Include names (*82 alpha descriptors)
+      description: >
+        If true, also read each zone's *82 alpha descriptor as its name,
+        on top of the zone type that's always read. Unlike zone type, this
+        has not yet been validated against real hardware -- test with
+        apply: false first and compare the notification's raw results
+        against what the panel actually shows. If false (default), only
+        zone type is read; every result's name stays empty.
+      required: false
+      default: false
+      selector:
+        boolean:

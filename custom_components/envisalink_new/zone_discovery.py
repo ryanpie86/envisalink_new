@@ -32,6 +32,7 @@ async def async_run_zone_discovery(
     partition_number: int,
     apply: bool = False,
     remove_unused: bool = False,
+    include_names: bool = False,
 ) -> dict[int, dict]:
     """Read zone names/types back from the panel's own installer programming.
 
@@ -48,12 +49,19 @@ async def async_run_zone_discovery(
     haven't been added to `zone_set` yet, so there's nothing for the caller
     to aim it at.
 
+    include_names (default False) additionally walks *82 to read each
+    zone's alpha descriptor as its name, on top of the *56 zone-type walk
+    that always runs. Unlike the *56 walk, this path has NOT been validated
+    against real hardware yet -- see
+    `honeywell_zone_discovery.HoneywellZoneDiscovery._read_zone_descriptors`.
+    Test with apply=False first.
+
     With apply=False (the default), results are only logged and posted as a
     persistent notification -- nothing about your configured zone
     names/types changes. Pass apply=True to also write the discovered
-    names/types into this integration's config entry (equivalent to what the
-    original YAML `zones:` config used to do), which reloads the
-    integration so the new names take effect.
+    types (and names, if include_names was set) into this integration's
+    config entry (equivalent to what the original YAML `zones:` config used
+    to do), which reloads the integration so the new names take effect.
 
     With apply=True, a zone that scans back as zone type "00" (Not Used) is
     otherwise left completely alone -- it has no name/type to write, so
@@ -78,7 +86,7 @@ async def async_run_zone_discovery(
 
     try:
         results = await controller.controller.discover_zone_info(
-            installer_code, partition_number, FULL_ZONE_SCAN_RANGE
+            installer_code, partition_number, FULL_ZONE_SCAN_RANGE, include_names
         )
     except ZoneDiscoveryError as err:
         LOGGER.error("Zone discovery failed: %s", err)

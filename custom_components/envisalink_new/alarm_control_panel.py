@@ -65,6 +65,7 @@ SERVICE_SCHEMA = vol.Schema(
 SERVICE_DISCOVER_ZONE_INFO = "discover_zone_info"
 ATTR_APPLY = "apply"
 ATTR_REMOVE_UNUSED = "remove_unused"
+ATTR_INCLUDE_NAMES = "include_names"
 
 
 async def async_setup_entry(
@@ -136,6 +137,7 @@ async def async_setup_entry(
             {
                 vol.Optional(ATTR_APPLY, default=False): cv.boolean,
                 vol.Optional(ATTR_REMOVE_UNUSED, default=False): cv.boolean,
+                vol.Optional(ATTR_INCLUDE_NAMES, default=False): cv.boolean,
             },
             "async_discover_zone_info",
         )
@@ -306,7 +308,9 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             self.code_or_default_code(code), self._partition_number, pgm
         )
 
-    async def async_discover_zone_info(self, apply=False, remove_unused=False):
+    async def async_discover_zone_info(
+        self, apply=False, remove_unused=False, include_names=False
+    ):
         """Read zone names/types back from the panel's own installer programming.
 
         See pyenvisalink/honeywell_zone_discovery.py for exactly what this
@@ -338,6 +342,11 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         entity stops being created for it. Requires apply=True since
         remove_unused has nothing to do on a dry run.
 
+        Pass include_names=True to also read each zone's *82 alpha
+        descriptor as its name. Unlike the *56 type walk, this path has NOT
+        been validated against real hardware yet -- see
+        zone_discovery.async_run_zone_discovery's docstring.
+
         This runs the same discovery walk shared with the "Discover Zone
         Info" button entity -- see zone_discovery.py.
         """
@@ -348,6 +357,7 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             self._partition_number,
             apply=apply,
             remove_unused=remove_unused,
+            include_names=include_names,
         )
 
     def _is_night_mode(self) -> bool:

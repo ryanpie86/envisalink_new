@@ -368,10 +368,14 @@ class EnvisalinkAlarmPanel:
         else:
             _LOGGER.error(COMMAND_ERR)
 
-    async def discover_zone_info(self, installer_code, partition_number, zones):
+    async def discover_zone_info(
+        self, installer_code, partition_number, zones, include_names=False
+    ):
         """Public method to read zone names/types back from the panel (Honeywell only)."""
         if self._client:
-            return await self._client.discover_zone_info(installer_code, partition_number, zones)
+            return await self._client.discover_zone_info(
+                installer_code, partition_number, zones, include_names
+            )
         _LOGGER.error(COMMAND_ERR)
         return {}
 

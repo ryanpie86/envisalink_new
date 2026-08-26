@@ -14,13 +14,12 @@ from .const import (
     CONF_PARTITION_SET,
     DEFAULT_PANEL_MODEL,
     DEFAULT_PARTITION_SET,
-    DEFAULT_ZONE_DISCOVERY_MODE,
     DOMAIN,
     LOGGER,
     PANEL_MODEL_VISTA_20P,
-    ZONE_DISCOVERY_MODE_APPLY,
-    ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED,
-    ZONE_DISCOVERY_MODE_SELECT_SUFFIX,
+    ZONE_DISCOVERY_APPLY_SUFFIX,
+    ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
+    ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
 )
 from .helpers import parse_range_string
 from .models import EnvisalinkDevice, EnvisalinkZoneScanDevice
@@ -82,8 +81,8 @@ async def async_setup_entry(
     # just panel_type, so a future non-Vista-20P model doesn't get a button
     # for a discovery flow it doesn't actually support yet. Lives on the
     # separate "Zone Scan" device (see models.EnvisalinkZoneScanDevice), not
-    # the alarm panel's own device, alongside the paired mode select entity
-    # (select.py).
+    # the alarm panel's own device, alongside the paired toggle switches
+    # (switch.py).
     if panel_type == PANEL_TYPE_HONEYWELL and entry.data.get(
         CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL
     ) == PANEL_MODEL_VISTA_20P:
@@ -124,18 +123,18 @@ class EnvisalinkPanicButton(EnvisalinkDevice, ButtonEntity):
 
 
 class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
-    """Button that runs a Honeywell/Vista zone-type discovery scan.
+    """Button that runs a Honeywell/Vista zone-discovery scan.
 
-    Lives on the "Zone Scan" sub-device next to the paired "Zone Discovery
-    Mode" select entity (select.py). A button entity can't prompt for
-    apply/remove_unused when pressed, so instead this reads whatever mode
-    is currently selected on that companion entity at press time -- pick
-    "Preview only", "Apply discovered names/types", or "Apply + remove
-    unused zones" there first, then press this button to run it. Results
-    are posted as a persistent notification either way. The
-    `envisalink_new.discover_zone_info` service remains available too, for
-    automations/scripts that want to set apply/remove_unused directly
-    without touching the select entity.
+    Lives on the "Zone Scan" sub-device next to three paired toggle
+    switches (switch.py): Apply Changes, Include Names, Remove Unused
+    Zones. A button entity can't prompt for apply/include_names/
+    remove_unused when pressed, so instead this reads whatever those three
+    switches are currently set to at press time -- flip the ones you want
+    first, then press this button to run it. With everything off (the
+    default) this is a no-op preview. Results are posted as a persistent
+    notification either way. The `envisalink_new.discover_zone_info`
+    service remains available too, for automations/scripts that want to
+    set those fields directly without touching the switches.
     """
 
     _attr_has_entity_name = True
@@ -154,33 +153,33 @@ class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
         self._entry = entry
         super().__init__("Discover Zone Info", controller, None, None)
 
-    def _current_mode(self) -> str:
-        """Look up the paired Zone Discovery Mode select entity's state."""
+    def _switch_is_on(self, suffix: str) -> bool:
+        """Look up one paired toggle switch's current state by suffix."""
         registry = er.async_get(self.hass)
-        select_unique_id = (
-            f"{self._controller.unique_id}_{ZONE_DISCOVERY_MODE_SELECT_SUFFIX}"
-        )
-        select_entity_id = registry.async_get_entity_id(
-            "select", DOMAIN, select_unique_id
-        )
-        if select_entity_id:
-            state = self.hass.states.get(select_entity_id)
-            if state and state.state in (
-                ZONE_DISCOVERY_MODE_APPLY,
-                ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED,
-                DEFAULT_ZONE_DISCOVERY_MODE,
-            ):
-                return state.state
-        return DEFAULT_ZONE_DISCOVERY_MODE
+        unique_id = f"{self._controller.unique_id}_{suffix}"
+        entity_id = registry.async_get_entity_id("switch", DOMAIN, unique_id)
+        if not entity_id:
+            return False
+        state = self.hass.states.get(entity_id)
+        return bool(state) and state.state == "on"
 
     async def async_press(self) -> None:
-        """Run zone discovery in whatever mode is currently selected."""
-        mode = self._current_mode()
-        apply = mode in (
-            ZONE_DISCOVERY_MODE_APPLY,
-            ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED,
-        )
-        remove_unused = mode == ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED
+        """Run zone discovery using whatever the toggle switches are set to."""
+        apply = self._switch_is_on(ZONE_DISCOVERY_APPLY_SUFFIX)
+        include_names = self._switch_is_on(ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX)
+        remove_unused = self._switch_is_on(ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX)
+
+        # Include Names works independently of Apply Changes on purpose --
+        # since *82 name reading is not yet hardware-validated the way *56
+        # zone type is (see docs/zone_discovery.md), turning it on with
+        # Apply Changes off is the safe way to preview what it reads
+        # before ever writing it anywhere. Remove Unused Zones is
+        # different: async_run_zone_discovery actively rejects
+        # remove_unused=True without apply=True (there's nothing to remove
+        # on a dry run), so silently drop it here rather than letting a
+        # button press raise on that combination.
+        if not apply:
+            remove_unused = False
 
         partition_spec = self._entry.data.get(CONF_PARTITION_SET, DEFAULT_PARTITION_SET)
         partition_set = parse_range_string(
@@ -196,6 +195,7 @@ class EnvisalinkZoneDiscoveryButton(EnvisalinkZoneScanDevice, ButtonEntity):
                 partition_number,
                 apply=apply,
                 remove_unused=remove_unused,
+                include_names=include_names,
             )
         except HomeAssistantError as err:
             LOGGER.error("Zone discovery (button) failed: %s", err)

@@ -135,23 +135,29 @@ this code has no business touching. By stopping at the summary screen,
 that prompt is simply never reachable, regardless of how any given zone is
 actually wired.
 
-### Per zone: *82 alpha descriptor (name) -- currently disabled
+### Per zone: *82 alpha descriptor (name) -- wired in, NOT yet hardware-validated
 
-**Not yet wired up.** While the *56 zone-type walk above was being
-validated against real hardware, *82 reading was deliberately left out of
-the loop (see `HoneywellZoneDiscovery.discover()` in
-`honeywell_zone_discovery.py`) so the two could be validated separately.
-`_read_zone_descriptor` below still exists and is expected to work as
-described, but `discover()` doesn't call it yet -- every result's `name` is
-currently always `None`. The keystrokes below are what it will resume
-sending once that validation happens.
+**Now wired into `discover()`** (`include_names=True`), but unlike the *56
+zone-type walk above, this path has **not** been exercised against real
+hardware yet -- it's built against the programming guide the same way *56
+originally was, before that validation turned up the corrections
+documented above. Expect the same kind of surprises (an unexpected
+separator, a different prompt order, a menu that behaves differently on a
+given firmware revision) until someone actually runs it with
+`include_names: true` (or the "Include Names" toggle) on a disarmed system
+with someone watching the physical keypad, and compares the notification's
+raw results against what the panel shows. See "Testing" below.
+
+Runs once per scan, after the *56 walk finishes and exits back to the main
+menu -- not interleaved per zone, to avoid repeatedly entering/exiting two
+different installer submenus:
 
 ```
-* 8 2          (enter *82 alpha descriptor programming)
+* 8 2          (enter *82 alpha descriptor programming -- once for the whole batch)
 1              (PROGRAM ALPHA? -> yes)
 0              (CUSTOM WORDS? -> no, standard descriptors)
    ... the descriptor for zone 1 is now displayed automatically ...
-* <ZZ>         (only if the target zone isn't 1: jump directly to it)
+* <ZZ>         (for each other requested zone: jump directly to it)
    ... capture the displayed descriptor text ...
 * 0 0          (return to PROGRAM ALPHA?)
 0              (PROGRAM ALPHA? -> no, exit without saving)
@@ -162,7 +168,11 @@ if any, displayed)... then press [*] plus the zone number *again*
 (flashing cursor appears)" to enter edit mode. **This code only ever sends
 the single `* <ZZ>` tap**, which the guide states displays the existing
 descriptor without a flashing cursor -- i.e. without entering edit mode.
-Nothing is ever written back through this path.
+Nothing is ever written back through this path. The captured text is used
+as-is (`.strip()`'d) rather than sliced like the *56 summary screen's data
+row was -- that's an assumption about the display format that has not
+been cross-checked against real hardware the way the *56 slicing was, and
+may need the same kind of correction.
 
 ### Exiting
 
@@ -206,26 +216,36 @@ zone range, and type table would need to branch per model.
 For convenience, a separate **"Zone Scan" device** (its own card/bubble in
 the HA UI, linked back to the alarm panel's device via `via_device` --
 see `models.EnvisalinkZoneScanDevice`) is created whenever the panel type
-is Honeywell *and* the configured panel model is Vista-20P. It holds two
+is Honeywell *and* the configured panel model is Vista-20P. It holds four
 entities:
 
-* **Zone Discovery Mode** (`select.py`) -- a dropdown with three options:
-  "Preview only (no changes)" (the default), "Apply discovered
-  names/types", and "Apply + remove unused zones".
-* **Discover Zone Info** (`button.py`) -- pressing it looks up whatever
-  mode is currently selected on the entity above (via the entity
-  registry, matched on unique ID) and runs the scan accordingly, posting
-  the same persistent-notification results the service call would. A
-  button can't prompt for parameters when pressed, so pairing it with a
-  select entity is how a plain UI click can still choose apply/
-  remove_unused instead of those being service-call-only.
+* **Apply Changes**, **Include Names**, **Remove Unused Zones**
+  (`switch.py`) -- three independent on/off toggles, all off by default.
+  They cover the same ground a single 5-option mode dropdown used to (an
+  earlier design of this device): with Apply Changes off, the other two
+  are ignored and a press is just a safe preview; with it on, Include
+  Names and Remove Unused Zones can each independently be on or off,
+  giving the 4 meaningful "apply" combinations without needing a fixed
+  enum of combo strings that would need a new entry for every future
+  option.
+* **Discover Zone Info** (`button.py`) -- pressing it looks up all three
+  switches above (via the entity registry, matched on unique ID) and runs
+  the scan accordingly, posting the same persistent-notification results
+  the service call would. A button can't prompt for parameters when
+  pressed, so pairing it with toggle switches is how a plain UI click can
+  still choose apply/include_names/remove_unused instead of those being
+  service-call-only.
+
+None of the three switches persist across an HA restart -- they always
+come back up off, so a forgotten "on" toggle can't silently carry into a
+scan run after a restart.
 
 The `envisalink_new.discover_zone_info` service remains available too
 (and is what automations/scripts should use, since they can just set
-`apply`/`remove_unused` directly rather than touching the select entity
-first). The button and the service both call the exact same underlying
-function (`zone_discovery.async_run_zone_discovery`) so they can't drift
-out of sync.
+`apply`/`include_names`/`remove_unused` directly rather than touching the
+switches first). The button and the service both call the exact same
+underlying function (`zone_discovery.async_run_zone_discovery`) so they
+can't drift out of sync.
 
 ## Current limitations (left for follow-up PRs)
 
@@ -233,11 +253,11 @@ out of sync.
   descriptor read ever looks like an enrollment prompt, the whole run
   aborts (see above). This has not been tested against a system with any
   RF zones.
-* Only zone type (from the *56 summary screen) is currently read -- name
-  (from *82) is implemented but not yet wired into `discover()`, see the
-  *82 section above. The finer-grained fields from the full *56 per-field
-  walk (hardware loop type, response time, report code, etc.) are
-  intentionally not read, for the reasons above.
+* Name (from *82, via `include_names`) is wired in but **not yet
+  hardware-validated** the way zone type is -- see the *82 section above.
+  The finer-grained fields from the full *56 per-field walk (hardware loop
+  type, response time, report code, etc.) are intentionally not read, for
+  the reasons above.
 * Zone type -> HA `BinarySensorDeviceClass` mapping
   (`evl_Honeywell_Zone_Type_To_Device_Class` in
   `pyenvisalink/honeywell_envisalinkdefs.py`) is a best-effort convention
@@ -250,16 +270,22 @@ out of sync.
 
 **The *56 zone-summary walk (keystrokes and alpha-text format above) has
 been confirmed against a real Vista-20P panel (2026-08-25)**; *82 alpha
-descriptor reading has not been separately validated yet and is disabled
-in `discover()` in the meantime (see above). Before trusting the *82 path
-once it's re-enabled:
+descriptor reading is now wired into `discover()` (`include_names`) but
+has **not** been separately validated yet (see above). Before trusting
+`include_names`/the "Include Names" toggle:
 
-1. Run with `apply: false` (the default) first, on a disarmed system, with
-   someone physically at a keypad watching what the panel actually does.
-2. Compare the logged/notified results against what you already know each
-   zone to be.
-3. Only pass `apply: true` once you're confident the results are correct
-   for your panel/firmware revision.
+1. Turn on "Include Names" but leave "Apply Changes" off (or pass
+   `include_names: true, apply: false` to the service), on a disarmed
+   system, with someone physically at a keypad watching what the panel
+   actually does when *82 comes up.
+2. Compare the notification's raw names against what you already know
+   each zone's descriptor to be, and watch for anything that looks like
+   the *56 header/data-row surprise (extra characters bleeding in from an
+   adjacent field, a prompt appearing in an unexpected order, etc.).
+3. Only turn on "Apply Changes" (or pass `apply: true`) once you're
+   confident the names are coming through correctly for your panel/
+   firmware revision -- same as always applies to zone type, which is
+   already confirmed working.
 
 If a step doesn't behave the way this doc says it should, please open an
 issue with the debug log (`custom_components.envisalink_new: debug`) --

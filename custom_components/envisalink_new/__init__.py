@@ -53,7 +53,6 @@ PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 ]

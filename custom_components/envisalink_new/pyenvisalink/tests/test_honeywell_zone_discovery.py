@@ -133,7 +133,7 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertEqual(results[9]["zone_type"], "09")
         self.assertEqual(results[9]["zone_type_label"], "Fire")
         self.assertEqual(results[9]["device_class"], "smoke")
-        # *82 alpha descriptor reading is temporarily disabled.
+        # include_names defaults to False -- *82 is never touched, name stays None.
         self.assertIsNone(results[9]["name"])
         self.assertEqual(results[9]["raw_summary"], summary)
 
@@ -227,6 +227,67 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
 
         # Program mode exit must still have been attempted even after the abort.
         self.assertIn("*99", client.sent)
+
+    def test_include_names_reads_82_descriptors_after_56_walk(self):
+        # include_names=True should, after the normal *56 walk finishes and
+        # exits back to the main menu, enter *82 exactly once for the whole
+        # batch (PROGRAM ALPHA? -> yes, CUSTOM WORDS? -> no, which itself
+        # displays zone 1's descriptor), then jump straight to each other
+        # requested zone with "*NN" the way "go to a data field" works
+        # elsewhere in the programming guide, and finally back out with
+        # "*00" then "0". NOT confirmed against real hardware yet -- see
+        # _read_zone_descriptors' docstring -- this test only locks in the
+        # intended keystroke sequence and result wiring.
+        summary_1 = _summary("Zn ZT P RC HW:RT", "01 01 1 10 EL:1 ")
+        summary_2 = _summary("Zn ZT P RC HW:RT", "02 09 1 10 EL:1 ")
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",  # installer code + 800
+                "SET TO CONFIRM?",  # *56
+                "OK",  # 0
+                summary_1,  # "01*"
+                "Enter Zn Num.   (00=Quit)     02",  # "#"
+                summary_2,  # "02*"
+                "Enter Zn Num.   (00=Quit)     03",  # "#"
+                "MAIN MENU",  # "00" (exit *56)
+                "PROGRAM ALPHA?",  # "*82"
+                "CUSTOM WORDS?",  # "1"
+                "FRONT DOOR      ",  # "0" -> zone 1's descriptor
+                "BACK DOOR       ",  # "*02" -> zone 2's descriptor
+                "PROGRAM ALPHA?",  # "*00" (back out)
+                "DATA MODE",  # "0" (exit *82)
+                "DATA MODE",  # "*99" (exit program mode)
+            ],
+        )
+        discovery = _discovery(client)
+
+        results = _run(discovery.discover("1234", [1, 2], include_names=True))
+
+        self.assertEqual(
+            client.sent,
+            [
+                "1234800",
+                "*56",
+                "0",
+                "01*",
+                "#",
+                "02*",
+                "#",
+                "00",
+                "*82",
+                "1",
+                "0",
+                "*02",
+                "*00",
+                "0",
+                "*99",
+            ],
+        )
+        self.assertEqual(results[1]["zone_type"], "01")
+        self.assertEqual(results[1]["name"], "FRONT DOOR")
+        self.assertEqual(results[2]["zone_type"], "09")
+        self.assertEqual(results[2]["name"], "BACK DOOR")
 
     def test_installer_code_is_masked_in_logs_not_in_wire_data(self):
         sent_log = []
