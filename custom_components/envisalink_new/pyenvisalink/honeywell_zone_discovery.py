@@ -79,7 +79,7 @@ OVERALL_TIMEOUT = 300.0
 # hardware: on top of waiting for the alpha display to actually change
 # (below), every keystroke send also gets this flat pause before the next
 # one goes out.
-STEP_PAUSE = 1.0
+STEP_PAUSE = 0.5
 
 # The only valid zone numbers on a Vista-20P/15P: 1-64 (hardwired/expander
 # zones) plus 91-99. 65-90 are not valid zone numbers on this panel and

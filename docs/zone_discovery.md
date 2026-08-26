@@ -92,7 +92,7 @@ real hardware:
   finding zones that haven't been configured yet, so there's nothing for
   a caller to usefully aim it at.
 * **Pacing**: Vista panels are slow. On top of waiting for the alpha
-  display to actually change/settle (below), a flat ~1 second pause after
+  display to actually change/settle (below), a flat ~0.5 second pause after
   every keystroke send is needed too.
 
 Per p.8, the SUMMARY SCREEN is displayed once a zone number is submitted
@@ -178,7 +178,7 @@ step above raised.
   target partition.
 * After every keystroke, waits for the panel's alpha display to actually
   change and settle before sending the next one, with a per-step timeout
-  -- plus a flat ~1 second pause on top of that, confirmed necessary
+  -- plus a flat ~0.5 second pause on top of that, confirmed necessary
   against real (slow) Vista hardware.
 * If a captured display ever contains `S/N`, `LOOP`, or `XMIT` -- signs of
   a wireless enrollment prompt -- the entire run aborts immediately rather
