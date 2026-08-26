@@ -2,6 +2,8 @@
 
 A modernized version of the Home Assistant `envisalink` integration.
 
+**This is [ryanpie86](https://github.com/ryanpie86)'s fork of [ufodone/envisalink_new](https://github.com/ufodone/envisalink_new)**, with an added Honeywell auto zone-mapping feature (reading zone types back from the panel's own installer programming -- see "Zone name/type discovery" below) on top of everything from the upstream project.
+
 My original intent was to submit these changes back HA core to update the aging `envisalink` integration. However, the scope of the changes got large which meant that the effort to them back into HA core would to be very time consuming. I don't expect to be able to commit the time required to get these changes back into HA core so this integration will unfortunately remain only available through HACS for the foreseeable future.
 
 ## Supported devices
@@ -31,7 +33,7 @@ My original intent was to submit these changes back HA core to update the aging 
 
 You need to add this repository to the custom repository page in HACS before you can install this integration.
 To do so first go to the HACS Integrations page. From there click the menu in the top right with the 3 dots.
-Use this URL for the repository `https://github.com/ufodone/envisalink_new` and select `integration` for the category. After you add the custom repository, just search for `EyezOn` in HACS and install it. Installation will complete after you reboot Home Assistant.
+Use this URL for the repository `https://github.com/ryanpie86/envisalink_new` and select `integration` for the category. After you add the custom repository, just search for `EyezOn` in HACS and install it. Installation will complete after you reboot Home Assistant.
 
 ## Configuration
 
@@ -49,7 +51,7 @@ Unlike the old configuration.yaml approach, the integration will create its own 
 
 ### Zone name/type discovery (Honeywell/Vista, experimental)
 
-The number of zones/partitions genuinely can't be discovered automatically, but for Honeywell/Vista panels, each zone's *type* and (if one was ever set) its *name* are already stored in the panel's own installer programming, and can be read back the same way an installer reads them off a physical alpha keypad. The `envisalink_new.discover_zone_info` service does this: set an installer code on the integration's Basic options page, then call the service on your alarm panel entity (optionally with a `zones` list, otherwise every configured zone) with `apply: false` first to review the results, then `apply: true` to write them in. See [docs/zone_discovery.md](docs/zone_discovery.md) for exactly what this does, its safety model, and its current limitations (wireless zones aren't supported yet). This briefly puts your panel into installer programming mode, so it requires the partition to be disarmed, and it's new -- please read that doc, and test with `apply: false` first, before relying on it.
+The number of zones/partitions genuinely can't be discovered automatically, but for Honeywell/Vista panels, each zone's *type* and (if one was ever set) its *name* are already stored in the panel's own installer programming, and can be read back the same way an installer reads them off a physical alpha keypad. The `envisalink_new.discover_zone_info` service does this: set an installer code on the integration's Basic options page, then call the service on your alarm panel entity (optionally with a `zones` list, otherwise every configured zone) with `apply: false` first to review the results, then `apply: true` to write them in. See [docs/zone_discovery.md](docs/zone_discovery.md) for exactly what this does, its safety model, and its current limitations (wireless zones aren't supported yet, and *name* reading is temporarily disabled while the zone-*type* walk is validated against real hardware -- `zone_type` is currently the only field populated). This briefly puts your panel into installer programming mode, so it requires the partition to be disarmed, and it's new -- please read that doc, and test with `apply: false` first, before relying on it.
 
 ### configuration.yaml
 
