@@ -41,7 +41,7 @@ Use this URL for the repository `https://github.com/ryanpie86/envisalink_new` an
 
 Configuration of the integration has been upgraded to use HA's config flow (via the UI). To add an envisalink device, go to `Settings -> Devices & Services`, click `Add Integration` at the bottom left of the screen and search for `envisalink_new`. This will then prompt you for basic information about the EVL device. Newly added is an `Alarm Name` which is used to prefix the entities created for your EVL.
 
-Because it is not possible to discover the number of zones and partitions of the alarm system automatically, it will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
+If you have the installer code for the panel, you can pull in the existing active zones for Vista panels (currently 20P only, non-ADT). A future release will also pull in the existing programmed Alpha Descriptors. It will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
 
 ```
 1-2,4-8,16-18,20-29
