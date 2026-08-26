@@ -93,9 +93,30 @@ DEFAULT_STEP_TIMEOUT = 8.0
 SETTLE_WINDOW = 0.4
 # Poll interval while waiting for the alpha display to update/settle.
 POLL_INTERVAL = 0.15
-# Hard ceiling on the entire discovery run, regardless of zone count, so a
-# stuck step can't leave the panel parked in programming mode indefinitely.
-OVERALL_TIMEOUT = 300.0
+# The overall run timeout used to be a flat 300s regardless of zone count.
+# CONFIRMED AGAINST REAL HARDWARE (2026-08-26, from a live debug log) that
+# this was too tight: a full 1-64 zone *56 walk plus a full 1-64 zone *82
+# walk (include_names=True, skip_unused_alpha not yet available in that
+# run) took long enough that asyncio.wait_for's cancellation fired mid-run
+# (at zone 26 of the *82 pass, ~301s in) -- the panel itself was fine
+# (program mode exits cleanly either way, via the `finally` block or a
+# manual `*00`/`*99`), but the run never finished and surfaced as an
+# "Unexpected exception" in HA rather than a clean result. So the overall
+# timeout now scales with how much work was actually asked for, instead of
+# a single number sized for whatever zone count happened to be tested
+# first. See `discover`'s use of these budgets.
+BASE_OVERHEAD_TIMEOUT = 60.0
+# Real measured pace: *56 zone-to-zone (summary read + "#" advance) ran
+# about 1-1.9s/zone. This budgets well above that.
+PER_ZONE_TYPE_TIMEOUT_BUDGET = 4.0
+# Real measured pace: *82 zone-to-zone ran closer to 3.5-4.5s/zone in that
+# same log -- notably slower than *56, largely because the post-"8" wait
+# (see the per-zone loop below) was timing out its own full 3s on every
+# zone rather than detecting a real change, before the next zone's own
+# header-match poll picked up the actual transition anyway. That wasted
+# wait was shortened alongside this budget change, but this stays
+# generously above even the pre-fix pace as a safety margin.
+PER_ZONE_NAME_TIMEOUT_BUDGET = 5.0
 
 # Vista panels are slow to react to keystrokes. Confirmed against real
 # hardware: on top of waiting for the alpha display to actually change
@@ -492,10 +513,22 @@ class HoneywellZoneDiscovery:
             # zone -- confirmed against real hardware as the only way back
             # out of the flashing-cursor field. Re-commits the same text
             # just read, since nothing here ever edits it.
+            #
+            # CONFIRMED AGAINST REAL HARDWARE (2026-08-26, live debug log):
+            # this wait used to have a 3.0s timeout here, and it was
+            # timing out on essentially every single zone rather than
+            # detecting a real change -- burning ~3s/zone for nothing,
+            # since whatever state this *would* have waited for gets
+            # picked up anyway by the next zone's own
+            # _await_zone_descriptor_display poll (which waits however
+            # long is actually needed, up to DEFAULT_STEP_TIMEOUT). Across
+            # a full 64-zone walk that wasted time was enough on its own
+            # to blow past the old flat OVERALL_TIMEOUT. Shortened to a
+            # brief pacing pause instead of a real wait-for-change.
             baseline = self._current_alpha()
             await self._send("8")
             with contextlib.suppress(ZoneDiscoveryError):
-                await self._await_alpha_change(baseline, timeout=3.0)
+                await self._await_alpha_change(baseline, timeout=1.0)
 
         # From the Zn ## prompt, [*] + 0 + 0 returns to PROGRAM ALPHA? --
         # confirmed against real hardware.
@@ -537,10 +570,24 @@ class HoneywellZoneDiscovery:
         Returns {zone_number: {"name": str | None, "zone_type": str | None,
         "zone_type_label": str | None, "device_class": str | None,
         "raw_summary": str | None}}.
+
+        The overall timeout scales with len(zones) (and whether
+        include_names is set) rather than being a flat number -- see
+        BASE_OVERHEAD_TIMEOUT/PER_ZONE_TYPE_TIMEOUT_BUDGET/
+        PER_ZONE_NAME_TIMEOUT_BUDGET. It budgets for the *82 pass at full
+        len(zones), even though skip_unused_alpha may end up reading fewer
+        -- there's no way to know how many zones will turn out unused
+        ahead of the *56 walk that's part of this same run, so this sizes
+        for the worst case (every zone actually in use) rather than
+        risking a timeout that depends on how many zones happen to be
+        unused on a given panel.
         """
+        overall_timeout = BASE_OVERHEAD_TIMEOUT + len(zones) * PER_ZONE_TYPE_TIMEOUT_BUDGET
+        if include_names:
+            overall_timeout += len(zones) * PER_ZONE_NAME_TIMEOUT_BUDGET
         return await asyncio.wait_for(
             self._discover_inner(installer_code, zones, include_names, skip_unused_alpha),
-            timeout=OVERALL_TIMEOUT,
+            timeout=overall_timeout,
         )
 
     async def _discover_inner(

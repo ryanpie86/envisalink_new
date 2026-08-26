@@ -297,8 +297,23 @@ step above raised.
   a wireless enrollment prompt -- the entire run aborts immediately rather
   than sending another keystroke into unfamiliar territory.
 * The whole run (all requested zones) is wrapped in a hard overall timeout
-  (5 minutes) so a stuck step can't leave the panel parked in programming
-  mode indefinitely.
+  so a stuck step can't leave the panel parked in programming mode
+  indefinitely. **This used to be a flat 5 minutes regardless of zone
+  count** -- confirmed against real hardware (2026-08-26, live debug log)
+  that this wasn't enough for a full 1-64 zone *56 walk plus a full 1-64
+  zone *82 walk: the run got cancelled mid-*82 (at zone 26) right around
+  the 300s mark, surfacing as an unhandled exception in HA rather than a
+  clean result (the panel itself was unaffected -- program mode still
+  exits cleanly either way). The timeout now scales with how many zones
+  were actually requested and whether `include_names` is set
+  (`BASE_OVERHEAD_TIMEOUT + zones * PER_ZONE_TYPE_TIMEOUT_BUDGET`, plus
+  `zones * PER_ZONE_NAME_TIMEOUT_BUDGET` if `include_names`), sized well
+  above the per-zone pace actually measured in that log. A wasted ~3
+  second wait after each zone's `[8]` save in the *82 walk (which was
+  timing out on almost every zone rather than detecting a real change,
+  since the panel's actual transition gets picked up by the *next*
+  zone's own header-match poll anyway) was also trimmed, cutting real
+  *82 walk time substantially on top of the wider ceiling.
 * Program-mode exit (`*99`) always runs, including on error/cancellation.
 
 ## Panel model and UI

@@ -22,7 +22,9 @@ per-method docstrings in honeywell_zone_discovery.py):
 """
 import asyncio
 import unittest
+import unittest.mock
 
+import pyenvisalink.honeywell_zone_discovery as honeywell_zone_discovery
 from pyenvisalink.honeywell_zone_discovery import (
     HoneywellZoneDiscovery,
     PanelArmedError,
@@ -489,6 +491,76 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertIsNone(results[1]["name"])
         self.assertIn("*01", client.sent)
         self.assertIn("8", client.sent)
+
+    def test_overall_timeout_scales_with_zone_count_and_include_names(self):
+        # Regression test for a real run that got cancelled mid-*82 walk
+        # (2026-08-26, live debug log): the old flat 300s overall timeout
+        # wasn't enough for a full 64-zone *56 walk plus a full 64-zone
+        # *82 walk. The timeout is now computed from
+        # BASE_OVERHEAD_TIMEOUT + zone_count * PER_ZONE_TYPE_TIMEOUT_BUDGET
+        # (+ zone_count * PER_ZONE_NAME_TIMEOUT_BUDGET if include_names) --
+        # assert the exact value handed to asyncio.wait_for so a future
+        # edit can't silently shrink it back down without this failing.
+        real_wait_for = asyncio.wait_for
+        captured = {}
+
+        async def _capturing_wait_for(coro, timeout=None):
+            captured["timeout"] = timeout
+            return await real_wait_for(coro, timeout=timeout)
+
+        summary = _summary("Zn ZT P RC HW:RT", "01 01 1 10 EL:1 ")
+        client = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",
+                "SET TO CONFIRM?",
+                "OK",
+                summary,
+                "Enter Zn Num.   (00=Quit)     02",
+                "DATA MODE",
+                "DATA MODE",
+            ],
+        )
+        discovery = _discovery(client)
+        with unittest.mock.patch("asyncio.wait_for", _capturing_wait_for):
+            _run(discovery.discover("1234", [1]))
+
+        self.assertEqual(
+            captured["timeout"],
+            honeywell_zone_discovery.BASE_OVERHEAD_TIMEOUT
+            + 1 * honeywell_zone_discovery.PER_ZONE_TYPE_TIMEOUT_BUDGET,
+        )
+
+        blank = "* Zn 01  " + " " * 23
+        client2 = _FakeClient(
+            1,
+            responses=[
+                "ENTERED PGM MODE",
+                "SET TO CONFIRM?",
+                "OK",
+                summary,
+                "Enter Zn Num.   (00=Quit)     02",
+                "MAIN MENU",
+                "PROGRAM ALPHA?",
+                "CUSTOM WORDS?",
+                blank,  # "0" -> lands directly on zone 1's descriptor
+                blank,  # "*01" -> no visible change
+                blank,  # "8" -> saved
+                "PROGRAM ALPHA?",  # "*00"
+                "DATA MODE",  # "0"
+                "DATA MODE",  # "*99"
+            ],
+        )
+        discovery2 = _discovery(client2)
+        with unittest.mock.patch("asyncio.wait_for", _capturing_wait_for):
+            _run(discovery2.discover("1234", [1], include_names=True))
+
+        self.assertEqual(
+            captured["timeout"],
+            honeywell_zone_discovery.BASE_OVERHEAD_TIMEOUT
+            + 1 * honeywell_zone_discovery.PER_ZONE_TYPE_TIMEOUT_BUDGET
+            + 1 * honeywell_zone_discovery.PER_ZONE_NAME_TIMEOUT_BUDGET,
+        )
 
     def test_installer_code_is_masked_in_logs_not_in_wire_data(self):
         sent_log = []
