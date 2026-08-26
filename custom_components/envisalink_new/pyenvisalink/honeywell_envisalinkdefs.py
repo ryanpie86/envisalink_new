@@ -982,6 +982,13 @@ evl_Honeywell_Zone_Types = {
     "14": "Carbon Monoxide",
     "15": "Not Used",
     "16": "Fire w/Verify",
+    # 17-19 are reserved -- confirmed against real hardware that an
+    # installer cannot assign these to a zone via *56. 20-22, by contrast,
+    # ARE installer-assignable, just not to a physical sensor -- they're
+    # dedicated Arm-STAY/Arm-AWAY/Disarm keyswitch-style panel functions.
+    "17": "Not Used",
+    "18": "Not Used",
+    "19": "Not Used",
     "20": "Arm-STAY",
     "21": "Arm-AWAY",
     "22": "Disarm",
@@ -1020,6 +1027,9 @@ evl_Honeywell_Zone_Type_To_Device_Class = {
     "14": "carbon_monoxide",
     "15": None,
     "16": "smoke",
+    "17": None,
+    "18": None,
+    "19": None,
     "20": None,
     "21": None,
     "22": None,
