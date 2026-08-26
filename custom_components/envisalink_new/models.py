@@ -1,7 +1,7 @@
 """Models for Envisalink."""
 from homeassistant.helpers.entity import DeviceInfo, Entity
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, ZONE_SCAN_DEVICE_SUFFIX
 
 
 class EnvisalinkDevice(Entity):
@@ -49,3 +49,24 @@ class EnvisalinkDevice(Entity):
     def available(self) -> bool:
         """Return if this entity is available or not."""
         return self._controller.available and super().available
+
+
+class EnvisalinkZoneScanDevice(EnvisalinkDevice):
+    """Entities that belong to the separate 'Zone Scan' sub-device.
+
+    Rendered as its own device card/bubble in the HA UI (linked back to the
+    alarm panel's device via `via_device`) rather than living inside the
+    alarm panel device's own Controls section. Only ever instantiated for
+    Honeywell panels configured as Vista-20P -- see button.py/select.py.
+    """
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information for the Zone Scan sub-device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self._controller.unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}")},
+            name="Zone Scan",
+            manufacturer="eyezon",
+            model="Honeywell Vista-20P zone discovery",
+            via_device=(DOMAIN, self._controller.unique_id),
+        )

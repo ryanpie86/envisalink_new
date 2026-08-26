@@ -44,6 +44,31 @@ CONF_INSTALLER_CODE = "installer_code"
 # docs/zone_discovery.md) "Known open items" for the plan.
 CONF_PANEL_MODEL = "panel_model"
 
+# The "Zone Scan" sub-device: a separate device (linked to the alarm panel's
+# own device via `via_device`, so it shows as its own card/bubble in the HA
+# UI) that holds the zone-discovery mode selector and its run button. Only
+# created for Honeywell panels configured as CONF_PANEL_MODEL ==
+# PANEL_MODEL_VISTA_20P. See models.EnvisalinkZoneScanDevice.
+ZONE_SCAN_DEVICE_SUFFIX = "zone_scan"
+
+# Options for the "Zone Discovery Mode" select entity (see select.py) that
+# the zone-discovery button (see button.py) reads at press time to decide
+# what to pass to zone_discovery.async_run_zone_discovery. A select entity
+# can offer a dropdown of choices; a button entity can't ask for anything
+# when pressed, so pairing the two is how this integration lets a UI click
+# choose apply/remove_unused instead of only being available by calling the
+# discover_zone_info service with those fields set directly.
+ZONE_DISCOVERY_MODE_PREVIEW = "Preview only (no changes)"
+ZONE_DISCOVERY_MODE_APPLY = "Apply discovered names/types"
+ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED = "Apply + remove unused zones"
+ZONE_DISCOVERY_MODES = [
+    ZONE_DISCOVERY_MODE_PREVIEW,
+    ZONE_DISCOVERY_MODE_APPLY,
+    ZONE_DISCOVERY_MODE_APPLY_REMOVE_UNUSED,
+]
+ZONE_DISCOVERY_MODE_SELECT_SUFFIX = "zone_discovery_mode"
+DEFAULT_ZONE_DISCOVERY_MODE = ZONE_DISCOVERY_MODE_PREVIEW
+
 
 # Config items used only in the YAML config
 CONF_ZONENAME = "name"

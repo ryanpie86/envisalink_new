@@ -203,17 +203,29 @@ branches on it yet -- it exists so a future revision can add other panel
 models without a breaking config change, at which point the keystrokes,
 zone range, and type table would need to branch per model.
 
-For convenience, a **"Discover Zone Info" button** entity is also created
-under the alarm panel's device (next to the Panic A/B/C buttons), but only
-when the panel type is Honeywell *and* the configured panel model is
-Vista-20P. Pressing it always runs a dry run (`apply: false,
-remove_unused: false`) and posts the same persistent-notification results
-as calling the service that way -- a button can't prompt for parameters,
-so `apply`/`remove_unused` are still only available by calling
-`envisalink_new.discover_zone_info` directly (Developer Tools > Actions)
-with those set to `true`. The button and the service share the exact same
-underlying code path (`zone_discovery.async_run_zone_discovery`) so they
-can't drift out of sync.
+For convenience, a separate **"Zone Scan" device** (its own card/bubble in
+the HA UI, linked back to the alarm panel's device via `via_device` --
+see `models.EnvisalinkZoneScanDevice`) is created whenever the panel type
+is Honeywell *and* the configured panel model is Vista-20P. It holds two
+entities:
+
+* **Zone Discovery Mode** (`select.py`) -- a dropdown with three options:
+  "Preview only (no changes)" (the default), "Apply discovered
+  names/types", and "Apply + remove unused zones".
+* **Discover Zone Info** (`button.py`) -- pressing it looks up whatever
+  mode is currently selected on the entity above (via the entity
+  registry, matched on unique ID) and runs the scan accordingly, posting
+  the same persistent-notification results the service call would. A
+  button can't prompt for parameters when pressed, so pairing it with a
+  select entity is how a plain UI click can still choose apply/
+  remove_unused instead of those being service-call-only.
+
+The `envisalink_new.discover_zone_info` service remains available too
+(and is what automations/scripts should use, since they can just set
+`apply`/`remove_unused` directly rather than touching the select entity
+first). The button and the service both call the exact same underlying
+function (`zone_discovery.async_run_zone_discovery`) so they can't drift
+out of sync.
 
 ## Current limitations (left for follow-up PRs)
 
