@@ -319,10 +319,10 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         disarmed, and it is only offered for Honeywell/Vista panels.
 
         Always scans FULL_ZONE_SCAN_RANGE (every valid zone number on a
-        Vista-20P/15P: 1-64 and 91-99), not just the zones already
-        configured for this integration -- the whole point of discovery is
-        finding zones that haven't been added to `zone_set` yet, so there's
-        nothing for the caller to aim it at.
+        Vista-20P/15P: 1-64), not just the zones already configured for
+        this integration -- the whole point of discovery is finding zones
+        that haven't been added to `zone_set` yet, so there's nothing for
+        the caller to aim it at.
 
         With apply=False (the default), results are only logged and posted
         as a persistent notification -- nothing about your configured zone

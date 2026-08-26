@@ -138,9 +138,13 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         self.assertEqual(results[9]["raw_summary"], summary)
 
     def test_multiple_zones_stay_in_56_session_and_use_hash_to_advance(self):
+        # 50 is a deliberately non-sequential jump after 1, 2 -- 91-99 are
+        # NOT valid zone numbers (they're additional zone TYPE codes, see
+        # evl_Honeywell_Zone_Types' "Configurable (90/91)" entries), so
+        # this test must not use one as a stand-in zone number.
         summary_1 = _summary("Zn ZT P RC HW:RT", "01 00 1 10 EL:1 ")
         summary_2 = _summary("Zn ZT P RC HW:RT", "02 00 1 10 EL:1 ")
-        summary_91 = _summary("Zn ZT P RC IN:L ", "91 05 1 10 RF: -")
+        summary_50 = _summary("Zn ZT P RC IN:L ", "50 05 1 10 RF: -")
         client = _FakeClient(
             1,
             responses=[
@@ -151,15 +155,15 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "Enter Zn Num.   (00=Quit)     02",  # "#"
                 summary_2,  # "02*"
                 "Enter Zn Num.   (00=Quit)     03",  # "#"
-                summary_91,  # "91*" (typed over the pre-filled "03")
-                "Enter Zn Num.   (00=Quit)     92",  # "#"
+                summary_50,  # "50*" (typed over the pre-filled "03")
+                "Enter Zn Num.   (00=Quit)     51",  # "#"
                 "DATA MODE",  # "00"
                 "DATA MODE",  # "*99"
             ],
         )
         discovery = _discovery(client)
 
-        results = _run(discovery.discover("1234", [1, 2, 91]))
+        results = _run(discovery.discover("1234", [1, 2, 50]))
 
         self.assertEqual(
             client.sent,
@@ -171,7 +175,7 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
                 "#",
                 "02*",
                 "#",
-                "91*",  # jumps straight to 91, skipping the invalid 65-90 range
+                "50*",  # jumps straight to 50, skipping 3-49
                 "#",
                 "00",
                 "*99",
@@ -179,7 +183,7 @@ class TestHoneywellZoneDiscovery(unittest.TestCase):
         )
         self.assertEqual(results[1]["zone_type"], "00")
         self.assertEqual(results[2]["zone_type"], "00")
-        self.assertEqual(results[91]["zone_type"], "05")
+        self.assertEqual(results[50]["zone_type"], "05")
 
     def test_zone_type_parsed_from_concatenated_header_and_data_row(self):
         # Exact string captured from real hardware for zone 1 (see module

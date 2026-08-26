@@ -82,10 +82,11 @@ OVERALL_TIMEOUT = 300.0
 STEP_PAUSE = 0.5
 
 # The only valid zone numbers on a Vista-20P/15P: 1-64 (hardwired/expander
-# zones) plus 91-99. 65-90 are not valid zone numbers on this panel and
-# must never be sent to the ENTER ZN NUM prompt. Confirmed against real
-# hardware -- see docs/zone_discovery.md.
-FULL_ZONE_SCAN_RANGE: list[int] = list(range(1, 65)) + list(range(91, 100))
+# zones). 91-99 are NOT zone numbers -- they're additional zone TYPE codes
+# (see evl_Honeywell_Zone_Types' "Configurable (90/91)" entries) that get
+# assigned as a zone's ZT value, same as 00-24/77/81. Confirmed against
+# real hardware/programming manual -- see docs/zone_discovery.md.
+FULL_ZONE_SCAN_RANGE: list[int] = list(range(1, 65))
 
 # Substrings that show up in Vista's wireless enrollment prompts. If any of
 # these appear in an alpha capture, we treat it as "this went somewhere we

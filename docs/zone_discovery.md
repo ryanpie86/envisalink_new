@@ -83,10 +83,13 @@ real hardware:
   Only once every zone you want has been read is `00` sent, from ENTER ZN
   NUM, to leave *56 entirely -- and *that* keystroke, unlike a real zone
   number, needs no `[*]` or `[#]` to submit.
-* **Zone range**: 1-64 and 91-99 are the only valid zone numbers on a
-  Vista-20P/15P (65-90 aren't valid zone numbers on this panel and must
-  never be sent to the ENTER ZN NUM prompt). `discover()` always scans
-  this full range (`FULL_ZONE_SCAN_RANGE`), not just the zones already
+* **Zone range**: 1-64 are the only valid zone *numbers* on a
+  Vista-20P/15P. (91-99 are NOT zone numbers -- an earlier version of
+  this doc mistakenly scanned them as if they were. They're additional
+  zone *type* codes, same as 00-24/77/81 -- see `evl_Honeywell_Zone_Types`'
+  "Configurable (90/91)" entries -- assignable as a zone's ZT value, not
+  numbers you can send to ENTER ZN NUM.) `discover()` always scans the
+  full 1-64 range (`FULL_ZONE_SCAN_RANGE`), not just the zones already
   configured in `zone_set` -- the `discover_zone_info` service has no
   "which zones" option for exactly this reason: the point of discovery is
   finding zones that haven't been configured yet, so there's nothing for

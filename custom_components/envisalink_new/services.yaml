@@ -48,7 +48,7 @@ discover_zone_info:
     Reads zone names and types directly from the panel's own installer
     programming (*56/*82), the same data an installer would read off a
     physical alpha keypad. Always scans every valid zone number for a
-    Vista-20P/15P (1-64 and 91-99), not just the zones already configured
+    Vista-20P/15P (1-64), not just the zones already configured
     for this integration -- the point of discovery is finding zones you
     haven't set up yet, so there's nothing to aim it at. This is a
     read-only operation, but it briefly puts the panel into installer
