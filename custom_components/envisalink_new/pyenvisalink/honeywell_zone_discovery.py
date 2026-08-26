@@ -75,6 +75,18 @@ POLL_INTERVAL = 0.15
 # stuck step can't leave the panel parked in programming mode indefinitely.
 OVERALL_TIMEOUT = 300.0
 
+# Vista panels are slow to react to keystrokes. Confirmed against real
+# hardware: on top of waiting for the alpha display to actually change
+# (below), every keystroke send also gets this flat pause before the next
+# one goes out.
+STEP_PAUSE = 1.0
+
+# The only valid zone numbers on a Vista-20P/15P: 1-64 (hardwired/expander
+# zones) plus 91-99. 65-90 are not valid zone numbers on this panel and
+# must never be sent to the ENTER ZN NUM prompt. Confirmed against real
+# hardware -- see docs/zone_discovery.md.
+FULL_ZONE_SCAN_RANGE: list[int] = list(range(1, 65)) + list(range(91, 100))
+
 # Substrings that show up in Vista's wireless enrollment prompts. If any of
 # these appear in an alpha capture, we treat it as "this went somewhere we
 # didn't expect" and abort rather than press further blind keystrokes.
@@ -96,14 +108,18 @@ class UnexpectedPanelResponseError(ZoneDiscoveryError):
 class HoneywellZoneDiscovery:
     """Drives *56/*82 to read back existing zone names/types from the panel."""
 
-    def __init__(self, client, partition_number: int):
+    def __init__(self, client, partition_number: int, step_pause: float = STEP_PAUSE):
         """
         client: the HoneywellClient instance (already connected/logged in).
         partition_number: which partition's keypad to drive this through.
+        step_pause: seconds to pause after every keystroke send (see
+            STEP_PAUSE). Overridable so tests don't have to eat the real
+            hardware pacing delay.
         """
         self._client = client
         self._panel = client._alarmPanel  # noqa: SLF001 -- same package, intentional
         self._partition_number = partition_number
+        self._step_pause = step_pause
 
     def _status(self):
         return self._panel.alarm_state["partition"][self._partition_number]["status"]
@@ -121,6 +137,10 @@ class HoneywellZoneDiscovery:
         await self._client.queue_keypresses_to_partition(
             self._partition_number, keypresses, log_override
         )
+        # Confirmed against real hardware: Vista panels need a beat between
+        # keystrokes regardless of how fast the alpha display appears to
+        # settle below.
+        await asyncio.sleep(self._step_pause)
 
     async def _await_alpha_change(
         self, baseline: str, timeout: float = DEFAULT_STEP_TIMEOUT
@@ -180,12 +200,14 @@ class HoneywellZoneDiscovery:
         except Exception:  # noqa: BLE001 -- best-effort, we're already cleaning up
             _LOGGER.exception("Zone discovery: error sending program-mode exit sequence")
 
-    async def _read_zone_summary(self, zone: int) -> tuple[str | None, str | None]:
-        """Enter *56, key in the zone number, capture the SUMMARY SCREEN, back out.
+    async def _enter_zone_menu(self) -> None:
+        """Enter *56 and answer SET TO CONFIRM?, once for the whole scan.
 
-        Returns (zone_type_code, alpha_text). Never advances past the
-        summary screen into the zone's individual fields -- see module
-        docstring for why.
+        Per the programming guide (and confirmed against real hardware),
+        this prompt is only ever asked once per *56 session -- the summary
+        screen for each subsequent zone is reached without leaving *56, via
+        `_advance_to_next_zone`, so this only needs to run once per
+        `discover()` call rather than once per zone.
         """
         baseline = self._current_alpha()
         await self._send("*56")
@@ -198,32 +220,69 @@ class HoneywellZoneDiscovery:
         with contextlib.suppress(ZoneDiscoveryError):
             await self._await_alpha_change(baseline, timeout=2.0)
 
+    async def _read_zone_summary(self, zone: int) -> tuple[str | None, str | None]:
+        """From the ENTER ZN NUM prompt, key in a zone number and capture its SUMMARY SCREEN.
+
+        Confirmed against real hardware: the 2-digit zone number needs a
+        trailing [*] to submit it -- the summary screen does not appear
+        just from typing the digits. Typing a new zone number here
+        overwrites whatever was pre-filled (e.g. by a prior
+        `_advance_to_next_zone` call), so this works whether or not the
+        requested zone is the next sequential one.
+
+        Leaves the panel sitting on the SUMMARY SCREEN; the caller is
+        responsible for what happens next (`_advance_to_next_zone`, or the
+        00-to-exit sequence after the last zone). This never advances past
+        the summary screen into the zone's individual fields -- see module
+        docstring for why.
+
+        Returns (zone_type_code, alpha_text).
+        """
         baseline = self._current_alpha()
-        await self._send(f"{zone:02d}")
+        await self._send(f"{zone:02d}*")
         summary = await self._await_alpha_change(baseline)
         self._check_for_wireless_prompt(summary, zone)
 
-        zone_type = self._parse_zone_type_from_summary(summary)
+        return self._parse_zone_type_from_summary(summary), summary
 
-        # Back out to the ENTER ZN NUM prompt (00 = quit, per the guide),
-        # then quit *56 mode entirely without having touched any field.
+    async def _advance_to_next_zone(self) -> None:
+        """From a SUMMARY SCREEN, press [#] to return to ENTER ZN NUM.
+
+        Confirmed against real hardware: this stays inside the *56 session
+        (SET TO CONFIRM? is not asked again) and the panel pre-fills the
+        next sequential zone number, though `_read_zone_summary` will
+        overwrite that pre-fill if a non-sequential zone is requested next.
+        """
         baseline = self._current_alpha()
-        await self._send("00")
+        await self._send("#")
         with contextlib.suppress(ZoneDiscoveryError):
             await self._await_alpha_change(baseline, timeout=3.0)
-
-        return zone_type, summary
 
     @staticmethod
     def _parse_zone_type_from_summary(summary: str) -> str | None:
         """Pull the 2-digit zone type code out of a *56 SUMMARY SCREEN string.
 
-        Observed formats (from the programming guide):
-            "01 09 1 10 EL 1"      (hardwired zone; ZT=09)
-            "10 00 1 10 RF: -"     (expander zone;  ZT=00 -- unlikely/blank case)
-        The zone type is always the second whitespace-separated token.
+        Confirmed against real hardware: the captured alpha text is a
+        single 32-character string that is the panel's two 16-character
+        display lines concatenated with NO separator -- a fixed header
+        ("Zn ZT P RC HW:RT" for hardwired zones 1-8, "Zn ZT P RC IN:L " for
+        expander zones 9+) immediately followed by the 16-character data
+        row, e.g.:
+
+            "Zn ZT P RC HW:RT01 00 1 10 EL:1 "
+             ^-- header (16 chars) --------^^-- data row (16 chars) -----^
+
+        Naively whitespace-splitting the whole string breaks, because the
+        header's last field runs directly into the data row's first field
+        with no space between them (".....HW:RT" + "01 00 1..." reads as
+        one token, "HW:RT01") -- the data row has to be sliced out first.
+        Within the data row, the zone type is the second whitespace-
+        separated token (e.g. "00" above).
         """
-        parts = summary.split()
+        if len(summary) < 32:
+            return None
+        data_row = summary[16:32]
+        parts = data_row.split()
         if len(parts) < 2:
             return None
         candidate = parts[1]
@@ -274,9 +333,15 @@ class HoneywellZoneDiscovery:
         return descriptor.strip() or None
 
     async def discover(self, installer_code: str, zones: list[int]) -> dict[int, dict]:
-        """Read back name/type for each zone in `zones`.
+        """Read back type for each zone in `zones` via the *56 summary screen.
 
-        Returns {zone_number: {"name": str | None, "zone_type": str | None,
+        `name` (from *82 alpha descriptors) is temporarily disabled while
+        the *56 zone-type walk above is being validated against real
+        hardware -- see `_read_zone_descriptor`, which is unused for now
+        but left in place for when that validation happens. Every result's
+        "name" is currently always None.
+
+        Returns {zone_number: {"name": None, "zone_type": str | None,
         "zone_type_label": str | None, "device_class": str | None,
         "raw_summary": str | None}}.
         """
@@ -290,18 +355,30 @@ class HoneywellZoneDiscovery:
         results: dict[int, dict] = {}
         await self._enter_program_mode(installer_code)
         try:
+            await self._enter_zone_menu()
             for zone in zones:
                 zone_type, summary = await self._read_zone_summary(zone)
-                name = await self._read_zone_descriptor(zone)
 
                 results[zone] = {
-                    "name": name,
+                    "name": None,
                     "zone_type": zone_type,
                     "zone_type_label": evl_Honeywell_Zone_Types.get(zone_type),
                     "device_class": evl_Honeywell_Zone_Type_To_Device_Class.get(zone_type),
                     "raw_summary": summary,
                 }
                 _LOGGER.info("Zone discovery: zone %s -> %s", zone, results[zone])
+
+                await self._advance_to_next_zone()
+
+            # Back at ENTER ZN NUM (with the zone after the last one
+            # requested pre-filled). Typing 00 here exits *56 straight back
+            # to the main installer menu -- confirmed against real
+            # hardware, unlike a real zone number this needs no [*] or [#]
+            # to submit.
+            baseline = self._current_alpha()
+            await self._send("00")
+            with contextlib.suppress(ZoneDiscoveryError):
+                await self._await_alpha_change(baseline, timeout=3.0)
         finally:
             await self._exit_program_mode()
 
