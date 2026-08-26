@@ -29,6 +29,12 @@ CONF_WIRELESS_ZONE_SET = "wireless_zone_set"
 CONF_SHOW_KEYPAD = "show_keypad"
 CONF_CODE_ARM_REQUIRED = "code_arm_required"
 CONF_PARTITION_ASSIGNMENTS = "partition_assignments"
+# Installer code, used only by the Honeywell zone-discovery service to read
+# back existing zone names/types from the panel's own programming. Stored
+# the same way (and with the same lack of extra-at-rest protection beyond
+# HA's own config entry storage) as the end-user alarm CONF_CODE above --
+# see docs/zone_discovery.md for why this is needed and what it's used for.
+CONF_INSTALLER_CODE = "installer_code"
 
 
 # Config items used only in the YAML config

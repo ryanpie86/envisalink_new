@@ -144,6 +144,11 @@ class EnvisalinkController:
         """Return the unique ID of the underlying device."""
         return self._unique_id
 
+    @property
+    def config_entry(self) -> ConfigEntry:
+        """Return the config entry backing this controller."""
+        return self._config_entry
+
     async def start(self) -> bool:
         """Start and connection to the underlying Envisalink alarm panel device."""
         LOGGER.info("Start envisalink")

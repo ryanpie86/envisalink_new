@@ -47,6 +47,10 @@ Because it is not possible to discover the number of zones and partitions of the
 
 Unlike the old configuration.yaml approach, the integration will create its own names for the entities it creates based on the `Alarm Name` setting you provided. These can all be changed using the normal HA method (e.g. find the entity in the UI, click it, go to Settings and make any necessary changes).
 
+### Zone name/type discovery (Honeywell/Vista, experimental)
+
+The number of zones/partitions genuinely can't be discovered automatically, but for Honeywell/Vista panels, each zone's *type* and (if one was ever set) its *name* are already stored in the panel's own installer programming, and can be read back the same way an installer reads them off a physical alpha keypad. The `envisalink_new.discover_zone_info` service does this: set an installer code on the integration's Basic options page, then call the service on your alarm panel entity (optionally with a `zones` list, otherwise every configured zone) with `apply: false` first to review the results, then `apply: true` to write them in. See [docs/zone_discovery.md](docs/zone_discovery.md) for exactly what this does, its safety model, and its current limitations (wireless zones aren't supported yet). This briefly puts your panel into installer programming mode, so it requires the partition to be disarmed, and it's new -- please read that doc, and test with `apply: false` first, before relying on it.
+
 ### configuration.yaml
 
 This method of configuring the integration is still available but is meant primarily to allow for easy upgrades for people using the original integration. On startup, the integration will look for the presence of the configuration and import it into a config entity. The intent here is that once setup, all your entity names, etc. If you subsequently change the configuration.yaml, the next HA restart will re-sync your changes into the config entity. However, it is recommended that once the initial import has been done and confirmed working that the entries in configuration.yaml are removed.

@@ -122,6 +122,24 @@ class HoneywellClient(EnvisalinkClient):
         """Public method to toggle a zone's bypass state."""
         await self.keypresses_to_partition(1, '%s9' % (code))
 
+    async def discover_zone_info(self, installer_code, partition_number, zones):
+        """Read back existing zone names/types directly from the panel's own programming.
+
+        Drives the panel's *56/*82 installer menus to read (never write) each
+        zone's currently-programmed type and alpha descriptor -- the same
+        data an installer would read off a physical alpha keypad. See
+        pyenvisalink/honeywell_zone_discovery.py for the full protocol
+        details and safety model; this refuses to run unless the partition
+        is disarmed, and always exits programming mode when done, including
+        on error.
+        """
+        # Imported locally to avoid a hard dependency on this module for the
+        # (much more common) code paths that never touch zone discovery.
+        from .honeywell_zone_discovery import HoneywellZoneDiscovery
+
+        discovery = HoneywellZoneDiscovery(self, partition_number)
+        return await discovery.discover(installer_code, zones)
+
     def _parse_frames(self, raw_input: str) -> (list, str):
         frames = []
         if not self._loggedin:

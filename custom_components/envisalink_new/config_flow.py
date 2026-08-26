@@ -22,6 +22,7 @@ from .const import (
     CONF_EVL_PORT,
     CONF_EVL_VERSION,
     CONF_HONEYWELL_ARM_NIGHT_MODE,
+    CONF_INSTALLER_CODE,
     CONF_PANEL_TYPE,
     CONF_PANIC,
     CONF_PARTITION_ASSIGNMENTS,
@@ -153,7 +154,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
                 return self.async_create_entry(title="", data=self.config_entry.options)
 
-        user_data_schema = _get_user_data_schema(config_defaults)
+        user_data_schema = _get_user_data_schema(
+            config_defaults, panel_type=self.config_entry.data.get(CONF_PANEL_TYPE)
+        )
 
         return self.async_show_form(
             step_id="basic",
@@ -435,7 +438,9 @@ async def _validate_input(
     return panel
 
 
-def _get_user_data_schema(defaults: dict[str, Any], is_creation: bool = False):
+def _get_user_data_schema(
+    defaults: dict[str, Any], is_creation: bool = False, panel_type: str | None = None
+):
     schema = {}
     if is_creation:
         schema = {
@@ -456,6 +461,20 @@ def _get_user_data_schema(defaults: dict[str, Any], is_creation: bool = False):
             CONF_EVL_DISCOVERY_PORT, default=defaults[CONF_EVL_DISCOVERY_PORT]
         ): cv.string,
     }
+
+    # Only meaningful for Honeywell/Vista panels (used by the zone-discovery
+    # service to enter installer programming mode). Not offered at initial
+    # creation time since the panel type isn't known yet -- set it afterward
+    # from this same Basic options page once the integration is set up.
+    if panel_type == PANEL_TYPE_HONEYWELL:
+        schema[
+            vol.Optional(
+                CONF_INSTALLER_CODE,
+                description={"suggested_value": defaults[CONF_INSTALLER_CODE]},
+                default="",
+            )
+        ] = cv.string
+
     return vol.Schema(schema)
 
 
@@ -473,5 +492,6 @@ def _get_user_data_defaults(data=None):
         CONF_CODE: data.get(CONF_CODE, ""),
         CONF_EVL_PORT: data.get(CONF_EVL_PORT, DEFAULT_PORT),
         CONF_EVL_DISCOVERY_PORT: data.get(CONF_EVL_DISCOVERY_PORT, DEFAULT_DISCOVERY_PORT),
+        CONF_INSTALLER_CODE: data.get(CONF_INSTALLER_CODE, ""),
     }
     return config_defaults

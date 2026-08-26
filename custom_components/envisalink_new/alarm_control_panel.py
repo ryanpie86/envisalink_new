@@ -12,17 +12,23 @@ from homeassistant.components.alarm_control_panel import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_CODE
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_CODE_ARM_REQUIRED,
     CONF_HONEYWELL_ARM_NIGHT_MODE,
+    CONF_INSTALLER_CODE,
     CONF_PANIC,
     CONF_PARTITION_SET,
     CONF_PARTITIONNAME,
     CONF_PARTITIONS,
     CONF_SHOW_KEYPAD,
+    CONF_ZONE_SET,
+    CONF_ZONENAME,
+    CONF_ZONES,
+    CONF_ZONETYPE,
     DEFAULT_CODE_ARM_REQUIRED,
     DEFAULT_HONEYWELL_ARM_NIGHT_MODE,
     DEFAULT_PANIC,
@@ -42,6 +48,7 @@ from .pyenvisalink.const import (
     PANEL_TYPE_UNO,
     STATE_CHANGE_PARTITION,
 )
+from .pyenvisalink.honeywell_zone_discovery import ZoneDiscoveryError
 
 SERVICE_ALARM_KEYPRESS = "alarm_keypress"
 ATTR_KEYPRESS = "keypress"
@@ -56,6 +63,10 @@ SERVICE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_CODE): cv.string,
     }
 )
+
+SERVICE_DISCOVER_ZONE_INFO = "discover_zone_info"
+ATTR_ZONES = "zones"
+ATTR_APPLY = "apply"
 
 
 async def async_setup_entry(
@@ -120,6 +131,16 @@ async def async_setup_entry(
         },
         "invoke_custom_function",
     )
+
+    if controller.controller.panel_type == PANEL_TYPE_HONEYWELL:
+        platform.async_register_entity_service(
+            SERVICE_DISCOVER_ZONE_INFO,
+            {
+                vol.Optional(ATTR_ZONES): [cv.positive_int],
+                vol.Optional(ATTR_APPLY, default=False): cv.boolean,
+            },
+            "async_discover_zone_info",
+        )
 
 
 class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
@@ -286,6 +307,93 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         await self._controller.controller.command_output(
             self.code_or_default_code(code), self._partition_number, pgm
         )
+
+    async def async_discover_zone_info(self, zones=None, apply=False):
+        """Read zone names/types back from the panel's own installer programming.
+
+        See pyenvisalink/honeywell_zone_discovery.py for exactly what this
+        does and doesn't do, and docs/zone_discovery.md for the reasoning.
+        This is a READ operation on the panel -- it never modifies zone
+        programming -- but it does briefly place the panel into installer
+        programming mode, so it refuses to run unless the partition is
+        disarmed, and it is only offered for Honeywell/Vista panels.
+
+        With apply=False (the default), results are only logged and posted
+        as a persistent notification -- nothing about your configured zone
+        names/types changes. Pass apply=True to also write the discovered
+        names/types into this integration's config entry (equivalent to
+        what the original YAML `zones:` config used to do), which reloads
+        the integration so the new names take effect.
+        """
+        config_entry = self._controller.config_entry
+        installer_code = config_entry.data.get(CONF_INSTALLER_CODE)
+        if not installer_code:
+            raise HomeAssistantError(
+                "No installer code is configured for this integration. Set one on "
+                "the integration's Basic options page (Settings > Devices & "
+                "services > this integration > Configure > Basic) before using "
+                "zone discovery."
+            )
+
+        if zones is None:
+            zone_spec = config_entry.data.get(CONF_ZONE_SET, "")
+            zones = parse_range_string(
+                zone_spec, min_val=1, max_val=self._controller.controller.max_zones
+            )
+        if not zones:
+            raise HomeAssistantError("No zones to discover (none configured or none requested).")
+
+        try:
+            results = await self._controller.controller.discover_zone_info(
+                installer_code, self._partition_number, zones
+            )
+        except ZoneDiscoveryError as err:
+            LOGGER.error("Zone discovery failed: %s", err)
+            raise HomeAssistantError(f"Zone discovery failed: {err}") from err
+
+        summary_lines = [
+            f"Zone {zone}: name={info['name']!r}, "
+            f"type={info['zone_type_label'] or info['zone_type']} "
+            f"(device_class={info['device_class']})"
+            for zone, info in sorted(results.items())
+        ]
+        LOGGER.info("Zone discovery results:\n%s", "\n".join(summary_lines))
+
+        await self.hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Envisalink zone discovery",
+                "notification_id": f"{DOMAIN}_zone_discovery_{config_entry.entry_id}",
+                "message": (
+                    ("Applied to zone names/types below.\n\n" if apply else "")
+                    + ("Dry run -- nothing was changed. Pass apply: true to save these.\n\n" if not apply else "")
+                    + "\n".join(summary_lines)
+                ),
+            },
+            blocking=False,
+        )
+
+        if apply:
+            new_zone_data = dict(config_entry.data.get(CONF_ZONES) or {})
+            for zone, info in results.items():
+                if not info["name"] and not info["device_class"]:
+                    continue
+                existing = dict(new_zone_data.get(str(zone), {}))
+                if info["name"]:
+                    existing[CONF_ZONENAME] = info["name"]
+                if info["device_class"]:
+                    existing[CONF_ZONETYPE] = info["device_class"]
+                new_zone_data[str(zone)] = existing
+
+            new_data = dict(config_entry.data)
+            new_data[CONF_ZONES] = new_zone_data
+            self.hass.config_entries.async_update_entry(config_entry, data=new_data)
+            LOGGER.info(
+                "Zone discovery: wrote %d zone(s) into config entry %s",
+                len(new_zone_data),
+                config_entry.entry_id,
+            )
 
     def _is_night_mode(self) -> bool:
         if self._controller.controller.panel_type == PANEL_TYPE_HONEYWELL:

@@ -951,3 +951,76 @@ evl_CID_Events = {
         "type": "zone",
     },
 }
+
+
+# --- Zone Discovery (*56 / *82 readout) ---------------------------------------------
+#
+# The panel's own installer programming already knows each zone's type and (if an
+# alpha keypad was ever used to set one) its descriptive name. *56 zone programming
+# mode's per-zone SUMMARY SCREEN reports the zone's type/partition/report code/
+# hardware-or-input-type, and *82 alpha descriptor programming displays (without
+# requiring you to enter edit mode) the currently-assigned name for a zone. See
+# docs/zone_discovery.md for the full keystroke-by-keystroke mapping this is based
+# on, taken from the Honeywell/Ademco VISTA-20P/15P Programming Guide (K5305-1PRV5).
+#
+# Source: VISTA-20P/15P Programming Guide, "ZONE TYPE" table (page covering *56).
+evl_Honeywell_Zone_Types = {
+    "00": "Not Used",
+    "01": "Entry/Exit #1",
+    "02": "Entry/Exit #2",
+    "03": "Perimeter",
+    "04": "Interior Follower",
+    "05": "Trouble Day/Alarm Night",
+    "06": "24-Hr Silent",
+    "07": "24-Hr Audible",
+    "08": "24-Hr Aux",
+    "09": "Fire",
+    "10": "Interior w/Delay",
+    "12": "Monitor Zone",
+    "14": "Carbon Monoxide",
+    "16": "Fire w/Verify",
+    "20": "Arm-STAY",
+    "21": "Arm-AWAY",
+    "22": "Disarm",
+    "23": "No Alarm Response",
+    "24": "Silent Burglary",
+    "77": "Keyswitch",
+    "81": "AAV Monitor Zone",
+    "90": "Configurable (90)",
+    "91": "Configurable (91)",
+}
+
+# Best-effort mapping from a Vista zone type code to the closest matching HA
+# BinarySensorDeviceClass. Zone type governs the panel's *alarm response* (e.g.
+# entry delay vs. instant), not the physical sensor hardware, so this is a
+# convention-based guess, not a guarantee -- it reflects how these zone types are
+# most commonly wired in the field, and should be spot-checked against the actual
+# hardware at each zone rather than trusted blindly. Zone types that don't
+# correspond to a physical sensor at all (arming/disarming/keyswitch function
+# zones) map to None so callers can skip creating a binary_sensor entity_id
+# override for them.
+evl_Honeywell_Zone_Type_To_Device_Class = {
+    "00": None,
+    "01": "opening",
+    "02": "opening",
+    "03": "opening",
+    "04": "motion",
+    "05": "safety",
+    "06": "safety",
+    "07": "safety",
+    "08": "safety",
+    "09": "smoke",
+    "10": "opening",
+    "12": "opening",
+    "14": "carbon_monoxide",
+    "16": "smoke",
+    "20": None,
+    "21": None,
+    "22": None,
+    "23": "opening",
+    "24": "opening",
+    "77": None,
+    "81": "opening",
+    "90": "opening",
+    "91": "opening",
+}
