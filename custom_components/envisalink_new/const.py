@@ -102,6 +102,15 @@ PANEL_MODEL_VISTA_20P = "vista_20p"
 # PANEL_MODELS_VISTA_20P_COMPATIBLE below instead of getting its own.
 PANEL_MODEL_VISTA_21IP = "vista_21ip"
 
+# For a Honeywell panel that isn't one of the models above (or the user
+# isn't sure), which keystroke sequence to send is unknown -- sending a
+# Vista-20P/21iP *56/*82 walk to a genuinely different panel could type
+# nonsense into whatever installer menu that panel does have. This value
+# means "don't know" and deliberately stays out of
+# PANEL_MODELS_VISTA_20P_COMPATIBLE below, so the zone-discovery
+# entities/service are withheld until the panel's own sequence gets added.
+PANEL_MODEL_UNKNOWN = "unknown"
+
 # Panel models whose zone-discovery programming is identical to the
 # Vista-20P's. Use this (not a direct == PANEL_MODEL_VISTA_20P check) when
 # gating any zone-discovery behavior on panel model.

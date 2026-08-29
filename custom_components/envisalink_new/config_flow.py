@@ -51,6 +51,7 @@ from .const import (
     HONEYWELL_ARM_MODE_INSTANT_VALUE,
     HONEYWELL_ARM_MODE_NIGHT_VALUE,
     LOGGER,
+    PANEL_MODEL_UNKNOWN,
     PANEL_MODEL_VISTA_20P,
     PANEL_MODEL_VISTA_21IP,
     SHOW_KEYPAD_ALWAYS_VALUE,
@@ -487,7 +488,11 @@ def _get_user_data_schema(
             )
         ] = selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[PANEL_MODEL_VISTA_20P, PANEL_MODEL_VISTA_21IP],
+                options=[
+                    PANEL_MODEL_VISTA_20P,
+                    PANEL_MODEL_VISTA_21IP,
+                    PANEL_MODEL_UNKNOWN,
+                ],
                 translation_key=CONF_PANEL_MODEL,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
