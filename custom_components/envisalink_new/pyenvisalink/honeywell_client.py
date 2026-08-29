@@ -20,6 +20,13 @@ from .honeywell_envisalinkdefs import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Expected format of a keypad update's non-alpha fields: partition (decimal),
+# icon/LED flags (hex), zone/user field (decimal, may be blank), beep flags
+# (hex), followed by a comma and the alpha field. The alpha field itself is
+# free-form text and may legitimately contain a "%" (e.g. "BATTERY % at 100"),
+# so it is intentionally excluded from this check.
+KEYPAD_UPDATE_RE = re.compile(r"^\d+,[0-9A-Fa-f]+,\d*,[0-9A-Fa-f]+,")
+
 
 class HoneywellClient(EnvisalinkClient):
     """Represents a honeywell alarm client."""
@@ -248,8 +255,7 @@ class HoneywellClient(EnvisalinkClient):
             dataList[4] = ",".join(dataList[4:])
             del dataList[5:]
         # make sure data is in format we expect, current TPI seems to send bad data every so often
-        # TODO: Make this a regex...
-        if "%" in data:
+        if not KEYPAD_UPDATE_RE.match(data):
             _LOGGER.error("Data format invalid from Envisalink, ignoring...")
             return
 
