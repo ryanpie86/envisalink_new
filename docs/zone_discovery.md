@@ -320,19 +320,27 @@ step above raised.
 
 This whole feature -- the keystroke sequence, `FULL_ZONE_SCAN_RANGE`
 (1-64), and the zone-type table -- was built and validated against a
-**Vista-20P** specifically. There is now a **Panel model** option on the
-integration's Basic options page (alongside the installer code), but it
-currently offers exactly one choice, "Vista 20P (Non-ADT Panels Only)"
-(`CONF_PANEL_MODEL` / `PANEL_MODEL_VISTA_20P` in `const.py`), and nothing
-branches on it yet -- it exists so a future revision can add other panel
-models without a breaking config change, at which point the keystrokes,
-zone range, and type table would need to branch per model.
+**Vista-20P** specifically. There is a **Panel model** option on the
+integration's Basic options page (alongside the installer code) with
+three choices: "Vista 20P (Non-ADT Panels Only)"
+(`PANEL_MODEL_VISTA_20P`), "Vista 21iP (Non-ADT Panels Only)"
+(`PANEL_MODEL_VISTA_21IP` -- a Vista-20P with a long-range radio built
+in, programs identically), and "I don't know / not listed"
+(`PANEL_MODEL_UNKNOWN`, the **default**) -- see `const.py`. Nothing
+branches on model beyond that grouping yet -- a genuinely different
+panel would need its own keystrokes, zone range, and type table added
+before it could join `PANEL_MODELS_VISTA_20P_COMPATIBLE`. The default
+is deliberately the "don't know" option rather than Vista-20P: sending
+this feature's *56/*82 walk to an unconfirmed panel model could type
+nonsense into whatever installer menu that panel actually has, so
+zone discovery stays off until a model known to be compatible is
+picked explicitly.
 
 For convenience, a separate **"Zone Scan" device** (its own card/bubble in
 the HA UI, linked back to the alarm panel's device via `via_device` --
 see `models.EnvisalinkZoneScanDevice`) is created whenever the panel type
-is Honeywell *and* the configured panel model is Vista-20P. It holds five
-entities:
+is Honeywell *and* the configured panel model is in
+`PANEL_MODELS_VISTA_20P_COMPATIBLE`. It holds five entities:
 
 * **Apply Changes**, **Include Names**, **Remove Unused Zones**
   (`switch.py`) -- three independent on/off toggles, all off by default.

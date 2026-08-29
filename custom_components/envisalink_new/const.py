@@ -135,7 +135,12 @@ DEFAULT_ZONEDUMP_INTERVAL = 30
 DEFAULT_ZONETYPE = BinarySensorDeviceClass.OPENING
 DEFAULT_HONEYWELL_ARM_NIGHT_MODE = HONEYWELL_ARM_MODE_NIGHT_VALUE
 DEFAULT_SHOW_KEYPAD = SHOW_KEYPAD_ALWAYS_VALUE
-DEFAULT_PANEL_MODEL = PANEL_MODEL_VISTA_20P
+# "Don't know" rather than Vista-20P: an entry that has never explicitly
+# picked a panel model (including one written before this option existed)
+# should not silently get Vista-20P/21iP-specific keystrokes sent to it.
+# Anyone relying on zone discovery needs to explicitly select their panel
+# model on the Basic options page after upgrading past when this changed.
+DEFAULT_PANEL_MODEL = PANEL_MODEL_UNKNOWN
 
 DEFAULT_CODE_ARM_REQUIRED = {
     PANEL_TYPE_DSC: False,
