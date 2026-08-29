@@ -111,7 +111,8 @@
     },
     "panel_model": {
       "options": {
-        "vista_20p": "Vista 20P (Non-ADT Panels Only)"
+        "vista_20p": "Vista 20P (Non-ADT Panels Only)",
+        "vista_21ip": "Vista 21iP (Non-ADT Panels Only)"
       }
     }
   },

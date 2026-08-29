@@ -37,11 +37,12 @@ CONF_PARTITION_ASSIGNMENTS = "partition_assignments"
 CONF_INSTALLER_CODE = "installer_code"
 # Which physical panel model the zone-discovery feature should target --
 # the *56 keystroke sequence, valid zone-number range, and zone-type table
-# it uses are all specific to a panel model/family. Only one option exists
-# today (Vista-20P, which this feature was built and hardware-validated
-# against); this is here so a future revision can add other models without
-# a breaking config change. See claude/envisalink-zone-discovery.md (or
-# docs/zone_discovery.md) "Known open items" for the plan.
+# it uses are all specific to a panel model/family. This feature was built
+# and hardware-validated against a Vista-20P; Vista-21iP is the same panel
+# with a long-range radio (*29) built in and programs identically, so it
+# reuses the same code path (see PANEL_MODELS_VISTA_20P_COMPATIBLE below).
+# See claude/envisalink-zone-discovery.md (or docs/zone_discovery.md)
+# "Known open items" for the plan on genuinely different models.
 CONF_PANEL_MODEL = "panel_model"
 
 # The "Zone Scan" sub-device: a separate device (linked to the alarm panel's
@@ -96,6 +97,15 @@ HONEYWELL_ARM_MODE_NIGHT_VALUE = "33"
 # Vista panels use a locked-down installer code/menu structure that this
 # feature has not been validated against.
 PANEL_MODEL_VISTA_20P = "vista_20p"
+# Vista-21iP is a Vista-20P with a long-range radio (*29) built in; it
+# programs exactly the same way, so it shares every code path gated on
+# PANEL_MODELS_VISTA_20P_COMPATIBLE below instead of getting its own.
+PANEL_MODEL_VISTA_21IP = "vista_21ip"
+
+# Panel models whose zone-discovery programming is identical to the
+# Vista-20P's. Use this (not a direct == PANEL_MODEL_VISTA_20P check) when
+# gating any zone-discovery behavior on panel model.
+PANEL_MODELS_VISTA_20P_COMPATIBLE = (PANEL_MODEL_VISTA_20P, PANEL_MODEL_VISTA_21IP)
 
 SHOW_KEYPAD_NEVER_VALUE = "never"
 SHOW_KEYPAD_DISARM_VALUE = "disarm"

@@ -16,7 +16,7 @@ from .const import (
     DEFAULT_PARTITION_SET,
     DOMAIN,
     LOGGER,
-    PANEL_MODEL_VISTA_20P,
+    PANEL_MODELS_VISTA_20P_COMPATIBLE,
     ZONE_DISCOVERY_APPLY_SUFFIX,
     ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
     ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
@@ -78,15 +78,16 @@ async def async_setup_entry(
 
     # Zone discovery is only implemented for Honeywell/Vista panels, and
     # only validated so far against a Vista-20P (see zone_discovery.py /
-    # docs/zone_discovery.md). Gate on the configured panel model too, not
-    # just panel_type, so a future non-Vista-20P model doesn't get a button
-    # for a discovery flow it doesn't actually support yet. Lives on the
-    # separate "Zone Scan" device (see models.EnvisalinkZoneScanDevice), not
-    # the alarm panel's own device, alongside the paired toggle switches
+    # docs/zone_discovery.md) plus the Vista-21iP, which programs
+    # identically. Gate on the configured panel model too, not just
+    # panel_type, so a future model with different programming doesn't get
+    # a button for a discovery flow it doesn't actually support yet. Lives
+    # on the separate "Zone Scan" device (see models.EnvisalinkZoneScanDevice),
+    # not the alarm panel's own device, alongside the paired toggle switches
     # (switch.py).
     if panel_type == PANEL_TYPE_HONEYWELL and entry.data.get(
         CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL
-    ) == PANEL_MODEL_VISTA_20P:
+    ) in PANEL_MODELS_VISTA_20P_COMPATIBLE:
         entities.append(
             EnvisalinkZoneDiscoveryButton(
                 controller,

@@ -57,7 +57,8 @@ class EnvisalinkZoneScanDevice(EnvisalinkDevice):
     Rendered as its own device card/bubble in the HA UI (linked back to the
     alarm panel's device via `via_device`) rather than living inside the
     alarm panel device's own Controls section. Only ever instantiated for
-    Honeywell panels configured as Vista-20P -- see button.py/select.py.
+    Honeywell panels configured as a Vista-20P-compatible model (Vista-20P
+    or Vista-21iP) -- see button.py/switch.py.
     """
 
     @property
@@ -67,6 +68,6 @@ class EnvisalinkZoneScanDevice(EnvisalinkDevice):
             identifiers={(DOMAIN, f"{self._controller.unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}")},
             name="Zone Scan",
             manufacturer="eyezon",
-            model="Honeywell Vista-20P zone discovery",
+            model="Honeywell Vista-20P/21iP zone discovery",
             via_device=(DOMAIN, self._controller.unique_id),
         )

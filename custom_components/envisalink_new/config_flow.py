@@ -52,6 +52,7 @@ from .const import (
     HONEYWELL_ARM_MODE_NIGHT_VALUE,
     LOGGER,
     PANEL_MODEL_VISTA_20P,
+    PANEL_MODEL_VISTA_21IP,
     SHOW_KEYPAD_ALWAYS_VALUE,
     SHOW_KEYPAD_DISARM_VALUE,
     SHOW_KEYPAD_NEVER_VALUE,
@@ -478,7 +479,7 @@ def _get_user_data_schema(
             )
         ] = cv.string
         # Which panel model the zone-discovery feature (*56 keystroke walk)
-        # should target. Only one option exists today -- see const.py.
+        # should target -- see const.py.
         schema[
             vol.Optional(
                 CONF_PANEL_MODEL,
@@ -486,7 +487,7 @@ def _get_user_data_schema(
             )
         ] = selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[PANEL_MODEL_VISTA_20P],
+                options=[PANEL_MODEL_VISTA_20P, PANEL_MODEL_VISTA_21IP],
                 translation_key=CONF_PANEL_MODEL,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )

@@ -20,7 +20,7 @@ from .const import (
     DEFAULT_PANEL_MODEL,
     DOMAIN,
     LOGGER,
-    PANEL_MODEL_VISTA_20P,
+    PANEL_MODELS_VISTA_20P_COMPATIBLE,
     ZONE_DISCOVERY_APPLY_SUFFIX,
     ZONE_DISCOVERY_INCLUDE_NAMES_SUFFIX,
     ZONE_DISCOVERY_REMOVE_UNUSED_SUFFIX,
@@ -79,11 +79,11 @@ async def async_setup_entry(
 
     # Zone-discovery mode toggles, on the separate "Zone Scan" device (see
     # models.EnvisalinkZoneScanDevice) alongside the "Discover Zone Info"
-    # button in button.py. Same gating as that button: Honeywell + panel
-    # model Vista-20P only.
+    # button in button.py. Same gating as that button: Honeywell + a panel
+    # model whose programming matches the Vista-20P.
     if panel_type == PANEL_TYPE_HONEYWELL and entry.data.get(
         CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL
-    ) == PANEL_MODEL_VISTA_20P:
+    ) in PANEL_MODELS_VISTA_20P_COMPATIBLE:
         entities.append(
             EnvisalinkZoneDiscoveryToggle(
                 controller,
