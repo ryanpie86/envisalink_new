@@ -395,8 +395,9 @@ sync.
   visibility into other loops on the same sensor (e.g. a supervisory
   low-battery condition), which can leave a panel-level "Check" condition
   invisible in HA even though the zone's own binary sensor looks clean.
-  See [wireless_zone_diagnostics.md](wireless_zone_diagnostics.md) for the
-  roadmap on that.
+  See [wireless_zone_diagnostics.md](wireless_zone_diagnostics.md) --
+  confirmed by testing to be an architectural limitation of the EVL4/TPI
+  protocol, not something fixable in this integration's code.
 * Name (from *82, via `include_names`) is now **fully confirmed against
   real hardware** (2026-08-27, see the *82 section above), keystrokes and
   captured-text format both, including the unprogrammed-zone (blank) case.
