@@ -26,9 +26,10 @@ roadmap for the part that's actually achievable.
 
 ## Short answer
 
-Not loop-for-loop parity with `alarmdecoder` -- that's a hardware/protocol
-difference, not a missed parsing case (see "Why not full parity" below).
-But there's a real, scoped improvement available: this integration already
+Not loop-for-loop parity with `alarmdecoder` -- confirmed by live test
+(2026-08-30) to be a hardware/protocol ceiling, not a missed parsing case
+(see "Why not full parity" below). But there's a real, scoped improvement
+available: this integration already
 receives and parses a zone-specific trouble-category event stream for
 Honeywell panels, and then throws the result away before it reaches Home
 Assistant. Wiring that up (Phase 1 below) would take HA from "zero
@@ -80,17 +81,56 @@ condition" -- not the loop number, but enough to know *which* zone and
   precedent for the entity shape Phase 1 below should reuse -- but note
   even DSC's is one bit per category, not a loop number.
 
-## Why not full `alarmdecoder` parity
+## Why not full `alarmdecoder` parity (CONFIRMED, 2026-08-30 -- see Phase 2)
 
-`alarmdecoder`'s loop-level detail comes from its AD2 hardware (AD2Pi /
-AD2USB) decoding raw ECP/keypad-bus sentences directly off the wire. The
-EVL3/EVL4's TPI protocol is EyezOn's own curated command set layered on
-top of that same bus, and as implemented here it does not forward raw
-loop data over the network protocol -- there is no loop number (1-4)
-anywhere in the TPI byte stream this client parses, for either panel type.
-This looks like a hardware/protocol ceiling, not a parsing gap in this
-integration. Phase 2 below is how to actually confirm that rather than
-just assume it.
+`alarmdecoder`'s AD2 hardware (AD2Pi/AD2USB) taps the panel's Keybus at
+the electrical level and decodes raw `!RFX:<serial>,<hex>` sentences --
+confirmed from `nutechsoftware/alarmdecoder`'s `RFMessage._parse_message`
+(`alarmdecoder/messages/rf_message.py`): a 7-digit transmitter serial plus
+a hex bitmask (bit2 battery, bit3 supervision, bits 5-8 loop3/loop2/loop4/
+loop1). Critically, this is a **receiver-level broadcast, not a
+panel-level report**: a 5800-series wireless receiver (e.g. 5881ENL) puts
+every RF packet it hears onto the Keybus regardless of whether the panel
+has that serial enrolled to a zone -- enrollment/zone-assignment is a
+decision the *panel* makes downstream, not something the receiver gates
+on. AD2 hardware, wired to the same bus, sees that raw broadcast
+unconditionally.
+
+EVL3/EVL4's TPI protocol is different in kind, not just missing a field:
+every message it exposes (`%00` keypad-alpha updates, `%03` realtime CID
+events) is something the **panel itself** chose to report -- its own
+display text or its own CID-reporting decision -- not a tap of the raw
+receiver broadcast. EVL4 is physically wired to the identical bus (same
+electrical signal an AD2 or a physical keypad would see), so it's capable
+of seeing the same raw traffic, but its firmware is closed-source, so
+whether it does anything with that traffic before deciding what to put on
+TPI can't be determined by reading code.
+
+**This was tested empirically and answered on 2026-08-30 (Phase 2):**
+Ryan triggered an unprogrammed 5800-series transmitter (serial `0231910`,
+confirmed not enrolled to any zone on the panel) roughly 30 times across
+multiple loops -- open/close and cover tamper -- with
+`custom_components.envisalink_new` debug logging active throughout. Full
+log coverage from 11:40:43 to 11:45:12 (continuous DEBUG-level lines the
+whole window, confirming logging never silently reverted) shows:
+- Zero occurrences of the serial `0231910`, `231910`, or its hex form
+  `389E6`, in any casing, anywhere in the log.
+- Every frame received during the entire window was one of the
+  already-known codes -- `%00`, `%01`, `%02`, `^00` -- with no
+  unrecognized command code, no `No handler defined in config for %XX`
+  warning (`honeywell_client.py:217`), and no `Ignoring invalid frame`
+  warning (`honeywell_client.py:209`), either of which would have fired
+  on any novel/unhandled command shape reaching the client.
+
+**Conclusion: EVL4's TPI protocol only relays data for zones the panel is
+actively configured to watch.** It does not tap the raw Keybus at the
+receiver-broadcast level the way AD2 hardware does -- an unenrolled
+transmitter is completely invisible over TPI, even with debug logging
+capturing every byte the EVL sends. This settles Phase 2 conclusively:
+per-loop / unenrolled-sensor visibility is a genuine architectural
+ceiling of the EVL4 + TPI combination, not a parsing gap in this
+integration and not something firmware-level filtering options could
+plausibly unlock from the network side.
 
 ## Recommended phasing
 
@@ -172,25 +212,33 @@ types on other panels):**
   `honeywell_client.py:386-387` -- the zone-timer path already knows when
   a battery/tamper condition should restore.
 
-### Phase 2 -- confirm the loop-number ceiling rather than assume it
-Before concluding true per-loop (1-4) exposure is impossible, verify
-against EyezOn's own TPI command reference (if obtainable) and/or a live
-debug capture during a real Check condition whether any currently-ignored
-bytes in the `%00`/`%03` frames carry a loop number. If nothing turns up,
-that confirms per-loop detail is a hard protocol limitation (same kind of
-caveat as the DSC low-battery README note about needing specific
-firmware), and there's nothing further to build past Phase 1.
+### Phase 2 -- confirm the loop-number ceiling rather than assume it (DONE, 2026-08-30)
+**Confirmed empirically, not just inferred from protocol docs.** See "Why
+not full `alarmdecoder` parity" above for the full test: an unprogrammed
+transmitter (serial `0231910`) triggered ~30 times across multiple loops
+produced zero trace over TPI -- no serial match, no unrecognized command
+code, nothing -- with debug logging verified continuously active the
+entire window. Per-loop / unenrolled-sensor detail is a hard ceiling of
+EVL4 + TPI: the EVL4 only relays what the panel itself is actively
+configured to watch and report, unlike AD2 hardware's raw Keybus tap.
+Nothing further to build past Phase 1.
 
 ### Phase 3 -- out of scope
 True `alarmdecoder`-style loop granularity would require tapping the raw
 ECP bus directly with separate hardware in parallel with the EVL4 (e.g. an
 AD2Pi). That's architecturally a different integration, not an extension
-of this one -- not recommended inside `envisalink_new`.
+of this one -- not recommended inside `envisalink_new`. Phase 2's test
+confirms there is no way to unlock this from the EVL4/TPI side alone.
 
 ## Status
 
-Phase 0 is done (2026-08-30) with a concrete result: no `%03` CID frames
-for this trouble type on this panel, alpha-text parsing is the mechanism
-that actually works. No code changes have been made yet -- Phase 1
-(alpha-text parsing as primary, `%03` wiring as secondary) is scoped for a
-future implementation session.
+Phase 0 and Phase 2 are both done (2026-08-30) with concrete, empirically
+tested results: no `%03` CID frames for a real Check-14 trouble condition,
+and zero TPI visibility whatsoever into an unprogrammed transmitter across
+~30 triggered loop events. Alpha-text parsing is the one mechanism proven
+to actually work, and per-loop/unenrolled-sensor detail is confirmed
+architecturally unavailable over TPI -- not a parsing gap, not a filtering
+setting, a hard ceiling. No code changes have been made yet -- Phase 1
+(alpha-text parsing as primary, `%03` wiring as secondary) remains scoped
+for a future implementation session; nothing further is planned beyond
+that.
