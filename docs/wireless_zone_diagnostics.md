@@ -94,20 +94,70 @@ just assume it.
 
 ## Recommended phasing
 
-### Phase 0 -- cheap validation before investing in Phase 1
-Next time a real "Check nn" condition happens, capture TPI traffic with
-`custom_components.envisalink_new: debug` logging on and confirm a `%03`
-frame actually arrives for it. Contact ID reporting to the EVL is a
-panel-programming-dependent feature (report codes under the panel's own
-installer menus) -- if the panel isn't programmed to report that event by
-CID, `%03` may never fire for RF supervision at all, which would make
-Phase 1 a no-op on that system before any code is written. This is a "go
-check the log" step, not a code change.
+### Phase 0 -- cheap validation before investing in Phase 1 (DONE, 2026-08-30)
 
-### Phase 1 -- wire up the already-parsed `%03` CID stream
-Goal: when a Honeywell zone has an active RF supervision/tamper/low-battery
-condition, reflect it as a zone-level attribute in HA.
+Executed by pulling Ryan's live Home Assistant history and debug log
+directly (debug logging for `custom_components.envisalink_new` happened
+to be on for part of the window; it's back to WARNING-only now) and
+comparing timestamps against `sensor.automation_keypad`'s state:
 
+- The "CHECK 14" condition was continuously active from at least
+  **2026-08-29 19:28:55 through 20:32:01** (still showing live at the
+  time of this check) -- `binary_sensor.office_closet_door_14` stayed
+  clean (`fault`/`open`/`tamper`/`low_battery` all `false`) the entire
+  time, exactly as originally reported.
+- Every frame in that window is a repeating **`%00`** Virtual Keypad
+  Update -- `Code:%00 Data:03,0208,14,00,CHECK 14 DEN    CLOSET DOOR`,
+  re-sent roughly every 4-8 seconds (interleaved with partition 1's own
+  `%00` "ARMED ***STAY***" refresh). That's the EVL's normal round-robin
+  keypad polling re-broadcasting the *same* current display, not a new
+  event each time -- and it confirms there is no hidden loop-number field
+  riding along in that frame (see Phase 2).
+- **Zero `%03` Realtime CID Event frames appear anywhere in the ~2000-line
+  captured window** (searched directly, 0 matches). So for this specific,
+  real, currently-live Check-14 case, **wiring up the dropped `%03`
+  handler would not have caught it** -- the panel evidently never sends a
+  CID report for this condition to the EVL at all (most likely: RF
+  supervision troubles aren't programmed for CID reporting on this panel,
+  or Vista treats this class of trouble as local-annunciation-only).
+- Refinement to the original hypothesis: the decoded flags show
+  `"trouble": true` but `"bat_trouble": false` / `"zone_low_battery":
+  false`, and the existing (dead-end) zone-timer code already categorizes
+  this update as `get_zone_report_type() == "tamper"` (the generic
+  `system_trouble` LED bit), not `"battery"`. So "Check 14" here reads as
+  a generic supervisory/trouble condition -- consistent with RF
+  supervision loss (panel hasn't heard from the sensor within its
+  expected window) -- rather than a confirmed low-battery report
+  specifically. Checking that sensor's battery is still the reasonable
+  physical action, but the panel's own category bit doesn't confirm
+  "battery" as the cause.
+
+**Conclusion: promote the alpha-text path in Phase 1 below from
+belt-and-suspenders fallback to the primary mechanism** -- it's the only
+signal actually observed to fire for this real, live condition. The `%03`
+CID stream is worth wiring up too (cheap, and may catch other trouble
+types this panel does report via CID -- e.g. AC loss or true system
+tamper), but it should not be presented as *the* fix for Check-style RF
+supervision conditions like this one.
+
+### Phase 1 -- surface the condition in HA
+Goal: when a Honeywell zone has an active trouble condition, reflect it as
+a zone-level attribute in HA instead of only on the physical keypad.
+
+**Primary mechanism (confirmed to actually fire, per Phase 0):** regex-parse
+`CHECK nn` (and similarly-shaped messages) out of the partition's alpha
+keypad text (`alarm_state["partition"][n]["status"]["alpha"]`, already
+captured in `handle_keypad_update`,
+`pyenvisalink/honeywell_client.py:244-403`) and set a `check`/`trouble`
+status key on `alarm_state["zone"][nn]`, surfaced as a new attribute on
+that zone's `binary_sensor` entity. No category detail (tamper vs. battery
+vs. supervision), just "this zone currently has an active check
+condition" -- but that's a real improvement over the current "nothing."
+Needs de-dup/timeout handling similar to the existing zone-timer mechanism
+so the flag clears once the keypad stops repeating the message.
+
+**Secondary mechanism (wire up regardless, may help for other trouble
+types on other panels):**
 - Mark `%03` as `state_change: True` in `honeywell_envisalinkdefs.py` (or
   otherwise route its result through `process_data()`).
 - Wire `controller.py` to `callback_realtime_cid_event`
@@ -121,14 +171,6 @@ condition, reflect it as a zone-level attribute in HA.
 - Finish the existing dead `# TODO Clear tamper/battery status` at
   `honeywell_client.py:386-387` -- the zone-timer path already knows when
   a battery/tamper condition should restore.
-- Belt-and-suspenders fallback (some panels/firmware may not emit `%03`,
-  per Phase 0): consider also regex-parsing `CHECK nn` out of the
-  partition's alpha keypad text
-  (`alarm_state["partition"][n]["status"]["alpha"]`, already captured in
-  `handle_keypad_update`) to at least flag that a zone number has an
-  active check condition, even with no category detail. Lower
-  confidence/dedup risk than the CID path -- treat as a secondary signal,
-  not the primary one.
 
 ### Phase 2 -- confirm the loop-number ceiling rather than assume it
 Before concluding true per-loop (1-4) exposure is impossible, verify
@@ -147,6 +189,8 @@ of this one -- not recommended inside `envisalink_new`.
 
 ## Status
 
-Not started. This is a planning doc; no code changes have been made yet.
-Phase 1 is scoped for a future implementation session, ideally after Phase
-0 confirms `%03` actually fires on the panel in question.
+Phase 0 is done (2026-08-30) with a concrete result: no `%03` CID frames
+for this trouble type on this panel, alpha-text parsing is the mechanism
+that actually works. No code changes have been made yet -- Phase 1
+(alpha-text parsing as primary, `%03` wiring as secondary) is scoped for a
+future implementation session.
