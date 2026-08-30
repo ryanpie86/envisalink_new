@@ -28,6 +28,8 @@ My original intent was to submit these changes back HA core to update the aging 
 - Honeywell/**Vista-20P** zone auto-discovery: reads each zone's type, and optionally name, directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with toggle switches and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below.
 - Many other small feature additions and bug fixes.
 
+Roadmap: see [docs/wireless_zone_diagnostics.md](docs/wireless_zone_diagnostics.md) for a writeup on extending per-zone diagnostics (tamper/low-battery/RF-supervision) for wireless Honeywell zones, and why full loop-level detail like HA's `alarmdecoder` integration has isn't achievable over the EVL's TPI protocol.
+
 ## Installation
 
 ### Install using [HACS](https://hacs.xyz/docs/setup/prerequisites)
