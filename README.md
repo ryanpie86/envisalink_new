@@ -25,7 +25,7 @@ My original intent was to submit these changes back HA core to update the aging 
   - Sequential queueing of commands to the EVL including retry on errors (which applicable) and timeouts
   - Ability to query EVL firmware version and MAC address
   - Update of asyncio network handling to use Streams rather than low-level APIs
-- Honeywell/**Vista-20P** zone auto-discovery: reads each zone's type, and optionally name, directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with toggle switches and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below.
+- Honeywell zone auto-discovery: reads each zone's type, and optionally name, directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with toggle switches and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below. **Current panel selection is limited for this feature**
 - Many other small feature additions and bug fixes.
 
 ## Installation
@@ -42,7 +42,7 @@ Use this URL for the repository `https://github.com/ryanpie86/envisalink_new` an
 
 Configuration of the integration has been upgraded to use HA's config flow (via the UI). To add an envisalink device, go to `Settings -> Devices & Services`, click `Add Integration` at the bottom left of the screen and search for `envisalink_new`. This will then prompt you for basic information about the EVL device. Newly added is an `Alarm Name` which is used to prefix the entities created for your EVL.
 
-If you have the installer code for the panel, you can pull in the existing active zones for Vista panels (currently 20P only, non-ADT), including their programmed Alpha Descriptors (see "Zone name/type discovery" below). It will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
+If you have the installer code for the panel, you can pull in the existing active zones for Vista panels (currently 20P/21IP only, non-ADT), including their programmed Alpha Descriptors (see "Zone name/type discovery" below). It will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
 
 ```
 1-2,4-8,16-18,20-29
