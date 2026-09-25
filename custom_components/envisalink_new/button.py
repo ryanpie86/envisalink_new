@@ -78,8 +78,8 @@ async def async_setup_entry(
 
     # Zone discovery is only implemented for Honeywell/Vista panels, and
     # only validated so far against a Vista-20P (see zone_discovery.py /
-    # docs/zone_discovery.md) plus the Vista-21iP, which programs
-    # identically. Gate on the configured panel model too, not just
+    # docs/zone_discovery.md) plus the Vista-21iP, which is expected to
+    # program identically. Gate on the configured panel model too, not just
     # panel_type, so a future model with different programming doesn't get
     # a button for a discovery flow it doesn't actually support yet. Lives
     # on the separate "Zone Scan" device (see models.EnvisalinkZoneScanDevice),

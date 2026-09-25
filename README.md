@@ -25,7 +25,7 @@ My original intent was to submit these changes back HA core to update the aging 
   - Sequential queueing of commands to the EVL including retry on errors (which applicable) and timeouts
   - Ability to query EVL firmware version and MAC address
   - Update of asyncio network handling to use Streams rather than low-level APIs
-- Honeywell zone auto-discovery: reads each zone's type, and optionally name, directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with toggle switches and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below. **Current panel selection is limited for this feature**
+- Honeywell zone auto-discovery: reads each zone's type, and optionally name, directly from the panel's own installer programming instead of requiring manual entry. Adds a "Panel model" option, a dedicated **Zone Scan** device with toggle switches and a run button, and a `discover_zone_info` service for automations -- see "Zone name/type discovery" below. **Current panel selection is limited for this feature.**
 - Many other small feature additions and bug fixes.
 
 ## Installation
@@ -42,7 +42,7 @@ Use this URL for the repository `https://github.com/ryanpie86/envisalink_new` an
 
 Configuration of the integration has been upgraded to use HA's config flow (via the UI). To add an envisalink device, go to `Settings -> Devices & Services`, click `Add Integration` at the bottom left of the screen and search for `envisalink_new`. This will then prompt you for basic information about the EVL device. Newly added is an `Alarm Name` which is used to prefix the entities created for your EVL.
 
-If you have the installer code for the panel, you can pull in the existing active zones for Vista panels (currently 20P/21IP only, non-ADT), including their programmed Alpha Descriptors (see "Zone name/type discovery" below). It will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
+If you have the installer code for the panel, you can pull in the existing active zones for Vista panels (currently 20P/21iP only, non-ADT), including their programmed Alpha Descriptors (see "Zone name/type discovery" below). It will default to creating no zones and a single partition (1). To adjust the setup to match your system, click the `Configure` button on the newly created device and define the available zones and partitions. The zone and partition list accepts a comma separated list of numerical zones/partitions as well as ranges. For example:
 
 ```
 1-2,4-8,16-18,20-29
@@ -55,14 +55,14 @@ Unlike the old configuration.yaml approach, the integration will create its own 
 The number of zones/partitions genuinely can't be discovered automatically, but for Honeywell/Vista panels, each zone's *type* and (if one was ever set) its *name* are already stored in the panel's own installer programming, and can be read back the same way an installer reads them off a physical alpha keypad.
 
 - **Setup**: set an installer code and select your panel model on the integration's Basic options page. Supported today: "Vista 20P (Non-ADT Panels Only)" and "Vista 21iP (Non-ADT Panels Only)".
-- **Default is "I don't know / not listed,"** which disables zone discovery. Sending this feature's keystroke sequence to an unconfirmed panel model could type nonsense into whatever installer menu that panel actually has, so the Zone Scan device won't appear until you explicitly pick a supported model.
+- **Default is "I don't know / not listed,"** which disables zone discovery. Sending this feature's keystroke sequence to an unconfirmed panel model could type nonsense into whatever installer menu that panel actually has, so the Zone Scan device won't appear, and the `discover_zone_info` service will refuse to run, until you explicitly pick a supported model. If you used zone discovery before this default changed, re-select your model after upgrading -- a Repairs notice will remind you if an installer code is set but no model is.
 - **Once a supported model is picked**, a separate **Zone Scan** device appears (its own card, linked to your alarm panel) with:
   - Three toggle switches, all off by default: **Apply Changes**, **Include Names**, **Remove Unused Zones**. With Apply Changes off, a press is always a safe, no-op preview regardless of the other two.
   - A **Discover Zone Info** button that runs a scan using whatever those switches are currently set to.
   - The same options via the `envisalink_new.discover_zone_info` service (Developer Tools > Actions), with `apply`/`include_names`/`remove_unused` set explicitly -- handy for automations/scripts.
 - **Scan scope**: always every valid zone number for a Vista-20P/15P (1-64), not just the zones you've already configured -- the point is finding zones you haven't set up yet.
   - A zone that comes back type "00" (Not Used) is left alone even when applying, unless "Remove Unused Zones" (or `remove_unused: true`, which requires `apply: true`) is also on, which drops it from your configured `zone_set`.
-- **Hardware status**: zone *type* and zone *name* (`include_names`/"Include Names") are both confirmed working against real Vista-20P hardware. See [docs/zone_discovery.md](docs/zone_discovery.md) for exactly what this does, its safety model, and current limitations (wireless zones aren't supported yet, and an unprogrammed zone's captured name text isn't fully confirmed).
+- **Hardware status**: zone *type* and zone *name* (`include_names`/"Include Names") are both confirmed working against real Vista-20P hardware; the Vista-21iP is expected to behave identically but hasn't been hardware-tested yet. See [docs/zone_discovery.md](docs/zone_discovery.md) for exactly what this does, its safety model, and current limitations (wireless zones aren't supported yet, and an unprogrammed zone's captured name text isn't fully confirmed).
 - **Safety**: this briefly puts your panel into installer programming mode, so it requires the partition to be disarmed. It's new -- read that doc first, and start with everything off except "Include Names" (a safe preview of names) before turning on "Apply Changes."
 
 ### configuration.yaml

@@ -39,8 +39,9 @@ CONF_INSTALLER_CODE = "installer_code"
 # the *56 keystroke sequence, valid zone-number range, and zone-type table
 # it uses are all specific to a panel model/family. This feature was built
 # and hardware-validated against a Vista-20P; Vista-21iP is the same panel
-# with a long-range radio (*29) built in and programs identically, so it
-# reuses the same code path (see PANEL_MODELS_VISTA_20P_COMPATIBLE below).
+# with a built-in IP communicator (enabled via *29) and is expected to
+# program identically, so it reuses the same code path (see
+# PANEL_MODELS_VISTA_20P_COMPATIBLE below) -- not yet hardware-validated.
 # See claude/envisalink-zone-discovery.md (or docs/zone_discovery.md)
 # "Known open items" for the plan on genuinely different models.
 CONF_PANEL_MODEL = "panel_model"
@@ -48,8 +49,8 @@ CONF_PANEL_MODEL = "panel_model"
 # The "Zone Scan" sub-device: a separate device (linked to the alarm panel's
 # own device via `via_device`, so it shows as its own card/bubble in the HA
 # UI) that holds the zone-discovery toggle switches and run button. Only
-# created for Honeywell panels configured as CONF_PANEL_MODEL ==
-# PANEL_MODEL_VISTA_20P. See models.EnvisalinkZoneScanDevice.
+# created for Honeywell panels whose CONF_PANEL_MODEL is in
+# PANEL_MODELS_VISTA_20P_COMPATIBLE. See models.EnvisalinkZoneScanDevice.
 ZONE_SCAN_DEVICE_SUFFIX = "zone_scan"
 
 # Four independent toggle switches (see switch.py) that the zone-discovery
@@ -97,9 +98,10 @@ HONEYWELL_ARM_MODE_NIGHT_VALUE = "33"
 # Vista panels use a locked-down installer code/menu structure that this
 # feature has not been validated against.
 PANEL_MODEL_VISTA_20P = "vista_20p"
-# Vista-21iP is a Vista-20P with a long-range radio (*29) built in; it
-# programs exactly the same way, so it shares every code path gated on
-# PANEL_MODELS_VISTA_20P_COMPATIBLE below instead of getting its own.
+# Vista-21iP is a Vista-20P with a built-in IP communicator (enabled via
+# *29); its zone programming (*56/*82) is expected to be the same, so it
+# shares every code path gated on PANEL_MODELS_VISTA_20P_COMPATIBLE below
+# instead of getting its own. Not yet validated against real hardware.
 PANEL_MODEL_VISTA_21IP = "vista_21ip"
 
 # For a Honeywell panel that isn't one of the models above (or the user

@@ -324,8 +324,9 @@ This whole feature -- the keystroke sequence, `FULL_ZONE_SCAN_RANGE`
 integration's Basic options page (alongside the installer code) with
 three choices: "Vista 20P (Non-ADT Panels Only)"
 (`PANEL_MODEL_VISTA_20P`), "Vista 21iP (Non-ADT Panels Only)"
-(`PANEL_MODEL_VISTA_21IP` -- a Vista-20P with a long-range radio built
-in, programs identically), and "I don't know / not listed"
+(`PANEL_MODEL_VISTA_21IP` -- a Vista-20P with a built-in IP
+communicator, expected to program identically but not yet
+hardware-validated), and "I don't know / not listed"
 (`PANEL_MODEL_UNKNOWN`, the **default**) -- see `const.py`. Nothing
 branches on model beyond that grouping yet -- a genuinely different
 panel would need its own keystrokes, zone range, and type table added
@@ -334,7 +335,10 @@ is deliberately the "don't know" option rather than Vista-20P: sending
 this feature's *56/*82 walk to an unconfirmed panel model could type
 nonsense into whatever installer menu that panel actually has, so
 zone discovery stays off until a model known to be compatible is
-picked explicitly.
+picked explicitly. That gate is enforced in
+`zone_discovery.async_run_zone_discovery` itself, so it applies to the
+`discover_zone_info` service as well as the Zone Scan entities. An entry
+with an installer code but no supported model gets a Repairs notice.
 
 For convenience, a separate **"Zone Scan" device** (its own card/bubble in
 the HA UI, linked back to the alarm panel's device via `via_device` --

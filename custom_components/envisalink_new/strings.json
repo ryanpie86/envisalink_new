@@ -113,7 +113,7 @@
       "options": {
         "vista_20p": "Vista 20P (Non-ADT Panels Only)",
         "vista_21ip": "Vista 21iP (Non-ADT Panels Only)",
-        "unknown": "I don't know / not listed (disables zone mapping)"
+        "unknown": "I don't know / not listed (disables zone discovery)"
       }
     }
   },
@@ -128,6 +128,10 @@
         }
       },
       "title": "A mismatched MAC address was detected."
+    },
+    "panel_model_not_selected": {
+      "title": "Zone discovery is disabled for {config_entry_title}",
+      "description": "An installer code is set for {config_entry_title}, but no supported panel model is selected, so the Zone Scan device and the `discover_zone_info` service are disabled. The panel model now defaults to \"I don't know / not listed\" instead of Vista 20P.\n\nIf your panel is a supported model, open Settings > Devices & services > envisalink_new > Configure > Basic and select it. If it isn't, clear the installer code to dismiss this notice."
     }
   }
 }
