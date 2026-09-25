@@ -39,9 +39,9 @@ CONF_INSTALLER_CODE = "installer_code"
 # the *56 keystroke sequence, valid zone-number range, and zone-type table
 # it uses are all specific to a panel model/family. This feature was built
 # and hardware-validated against a Vista-20P; Vista-21iP is the same panel
-# with a built-in IP communicator (enabled via *29) and is expected to
-# program identically, so it reuses the same code path (see
-# PANEL_MODELS_VISTA_20P_COMPATIBLE below) -- not yet hardware-validated.
+# with a built-in IP communicator (enabled via *29) and programs
+# identically (also hardware-validated), so it reuses the same code path
+# (see PANEL_MODELS_VISTA_20P_COMPATIBLE below).
 # See claude/envisalink-zone-discovery.md (or docs/zone_discovery.md)
 # "Known open items" for the plan on genuinely different models.
 CONF_PANEL_MODEL = "panel_model"
@@ -99,9 +99,9 @@ HONEYWELL_ARM_MODE_NIGHT_VALUE = "33"
 # feature has not been validated against.
 PANEL_MODEL_VISTA_20P = "vista_20p"
 # Vista-21iP is a Vista-20P with a built-in IP communicator (enabled via
-# *29); its zone programming (*56/*82) is expected to be the same, so it
-# shares every code path gated on PANEL_MODELS_VISTA_20P_COMPATIBLE below
-# instead of getting its own. Not yet validated against real hardware.
+# *29); its zone programming (*56/*82) is the same (hardware-validated),
+# so it shares every code path gated on PANEL_MODELS_VISTA_20P_COMPATIBLE
+# below instead of getting its own.
 PANEL_MODEL_VISTA_21IP = "vista_21ip"
 
 # For a Honeywell panel that isn't one of the models above (or the user

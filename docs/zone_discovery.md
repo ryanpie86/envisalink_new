@@ -325,8 +325,8 @@ integration's Basic options page (alongside the installer code) with
 three choices: "Vista 20P (Non-ADT Panels Only)"
 (`PANEL_MODEL_VISTA_20P`), "Vista 21iP (Non-ADT Panels Only)"
 (`PANEL_MODEL_VISTA_21IP` -- a Vista-20P with a built-in IP
-communicator, expected to program identically but not yet
-hardware-validated), and "I don't know / not listed"
+communicator, programs identically and is also hardware-validated),
+and "I don't know / not listed"
 (`PANEL_MODEL_UNKNOWN`, the **default**) -- see `const.py`. Nothing
 branches on model beyond that grouping yet -- a genuinely different
 panel would need its own keystrokes, zone range, and type table added
