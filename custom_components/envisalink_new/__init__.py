@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_CODE, CONF_HOST, CONF_TIMEOUT, Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -17,6 +18,8 @@ from .const import (
     CONF_EVL_KEEPALIVE,
     CONF_EVL_PORT,
     CONF_EVL_VERSION,
+    CONF_INSTALLER_CODE,
+    CONF_PANEL_MODEL,
     CONF_PANEL_TYPE,
     CONF_PANIC,
     CONF_PARTITION_SET,
@@ -34,6 +37,7 @@ from .const import (
     DEFAULT_ALARM_NAME,
     DEFAULT_EVL_VERSION,
     DEFAULT_KEEPALIVE,
+    DEFAULT_PANEL_MODEL,
     DEFAULT_PANIC,
     DEFAULT_PORT,
     DEFAULT_TIMEOUT,
@@ -41,6 +45,7 @@ from .const import (
     DEFAULT_ZONETYPE,
     DOMAIN,
     LOGGER,
+    PANEL_MODELS_VISTA_20P_COMPATIBLE,
     SHOW_KEYPAD_ALWAYS_VALUE,
     SHOW_KEYPAD_NEVER_VALUE,
 )
@@ -151,10 +156,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _async_update_panel_model_issue(hass, entry, controller.controller.panel_type)
+
     # Reload entry when its updated.
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
+
+
+@callback
+def _async_update_panel_model_issue(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry, panel_type: str
+) -> None:
+    """Flag a Honeywell entry that has an installer code but no supported panel model.
+
+    DEFAULT_PANEL_MODEL is "unknown", so an entry that relied on the old
+    Vista-20P default silently loses its Zone Scan device on upgrade. Having
+    an installer code set is a good sign zone discovery was wanted, so raise
+    a Repairs notice telling the user to pick their model explicitly.
+    """
+    issue_id = f"panel_model_not_selected_{entry.entry_id}"
+    if (
+        panel_type == PANEL_TYPE_HONEYWELL
+        and entry.data.get(CONF_INSTALLER_CODE)
+        and entry.data.get(CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL)
+        not in PANEL_MODELS_VISTA_20P_COMPATIBLE
+    ):
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="panel_model_not_selected",
+            translation_placeholders={"config_entry_title": entry.title},
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 async def async_unload_entry(

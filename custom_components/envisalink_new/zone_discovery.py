@@ -13,13 +13,16 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CONF_INSTALLER_CODE,
+    CONF_PANEL_MODEL,
     CONF_ZONE_SET,
     CONF_ZONENAME,
     CONF_ZONES,
     CONF_ZONETYPE,
+    DEFAULT_PANEL_MODEL,
     DEFAULT_ZONE_SET,
     DOMAIN,
     LOGGER,
+    PANEL_MODELS_VISTA_20P_COMPATIBLE,
 )
 from .helpers import generate_range_string, parse_range_string
 from .pyenvisalink.honeywell_zone_discovery import FULL_ZONE_SCAN_RANGE, ZoneDiscoveryError
@@ -80,6 +83,19 @@ async def async_run_zone_discovery(
     name/type override, if any), so an entity stops being created for it.
     Requires apply=True since remove_unused has nothing to do on a dry run.
     """
+    # Checked here rather than only where the Zone Scan entities are created,
+    # so the discover_zone_info service (registered for every Honeywell
+    # panel) can't send the Vista-20P keystroke walk to a panel whose model
+    # is "unknown" or otherwise not confirmed compatible.
+    panel_model = config_entry.data.get(CONF_PANEL_MODEL, DEFAULT_PANEL_MODEL)
+    if panel_model not in PANEL_MODELS_VISTA_20P_COMPATIBLE:
+        raise HomeAssistantError(
+            "Zone discovery is disabled because no supported panel model is "
+            "selected. Pick your panel model on the integration's Basic "
+            "options page (Settings > Devices & services > this integration "
+            "> Configure > Basic) before using zone discovery."
+        )
+
     installer_code = config_entry.data.get(CONF_INSTALLER_CODE)
     if not installer_code:
         raise HomeAssistantError(
