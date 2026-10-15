@@ -367,9 +367,13 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         )
 
     def _is_alarm_latched(self) -> bool:
-        # The panel drops its live alarm flag when the bell timeout expires but stays
-        # armed with the alarm held in memory until a user disarms. Keep reporting
+        # A Honeywell panel drops its live alarm flag when the bell timeout expires but
+        # stays armed with the alarm held in memory until a user disarms. Keep reporting
         # TRIGGERED for that period so the alarm isn't masked as a plain armed state.
+        # Not applied to DSC: its memory flag comes from partition 1's keypad LEDs but is
+        # copied to every partition, and DSC already holds `alarm` until disarmed.
+        if self._controller.controller.panel_type != PANEL_TYPE_HONEYWELL:
+            return False
         status = self._info["status"]
         return status["alarm_in_memory"] and (status["armed_away"] or status["armed_stay"])
 

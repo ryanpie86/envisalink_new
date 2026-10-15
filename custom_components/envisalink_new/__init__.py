@@ -184,7 +184,7 @@ def _async_update_panel_model_issue(
     an installer code set is a good sign zone discovery was wanted, so raise
     a Repairs notice telling the user to pick their model explicitly.
     """
-    issue_id = f"panel_model_not_selected_{entry.entry_id}"
+    issue_id = _panel_model_issue_id(entry)
     if (
         panel_type == PANEL_TYPE_HONEYWELL
         and entry.data.get(CONF_INSTALLER_CODE)
@@ -204,6 +204,10 @@ def _async_update_panel_model_issue(
         ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
+def _panel_model_issue_id(entry: config_entries.ConfigEntry) -> str:
+    return f"panel_model_not_selected_{entry.entry_id}"
+
+
 async def async_unload_entry(
     hass: HomeAssistant, entry: config_entries.ConfigEntry
 ) -> bool:
@@ -215,7 +219,20 @@ async def async_unload_entry(
 
         hass.data[DOMAIN].pop(entry.entry_id)
 
+        # Setup re-evaluates the issue, so drop it while the entry is unloaded
+        # (disabled, or about to be removed) rather than leave it pointing at
+        # an entry that can't act on it.
+        ir.async_delete_issue(hass, DOMAIN, _panel_model_issue_id(entry))
+
     return unload_ok
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry
+) -> None:
+    """Clean up after a config entry is removed."""
+    # Covers an entry removed while not loaded, where unload never ran.
+    ir.async_delete_issue(hass, DOMAIN, _panel_model_issue_id(entry))
 
 
 async def async_reload_entry(
