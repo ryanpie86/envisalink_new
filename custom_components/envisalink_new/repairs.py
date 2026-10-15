@@ -54,8 +54,8 @@ class MigrateUniqueIDFlow(RepairsFlow):
         )
 
     async def _async_update_entities(self):
-        """Update the unique ID on all the entities attached to this config entry and remove
-        the subsequently orphaned device.
+        """Update the unique ID on all the entities and devices attached to this config
+        entry.
         """
 
         old_unique_id = self.description_placeholders["old_unique_id"]
@@ -74,16 +74,26 @@ class MigrateUniqueIDFlow(RepairsFlow):
             self.hass, self._config_entry_id, _async_update_unique_id
         )
 
-        # Remove the old panel device and its Zone Scan sub-device; the entities
-        # recreate both under the new unique ID when the entry reloads.
+        # Move the panel device and its Zone Scan sub-device to the new unique ID
+        # rather than removing them. Removing a device deletes its entities' registry
+        # entries, and HA before 2025.7 doesn't restore their settings when they're
+        # recreated; keeping the devices also keeps their ids, names and areas.
         dev_reg = dr.async_get(self.hass)
-        for identifier in (
-            (DOMAIN, f"{old_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}"),
-            (DOMAIN, old_unique_id),
+        for old_id, new_id in (
+            (old_unique_id, new_unique_id),
+            (
+                f"{old_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}",
+                f"{new_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}",
+            ),
         ):
-            old_device = _async_get_device(dev_reg, identifier, self._config_entry_id)
-            if old_device:
+            old_device = _async_get_device(dev_reg, (DOMAIN, old_id), self._config_entry_id)
+            if not old_device:
+                continue
+            if _async_get_device(dev_reg, (DOMAIN, new_id), self._config_entry_id):
+                # A device already exists under the new ID, so the old one is orphaned
                 dev_reg.async_remove_device(old_device.id)
+            else:
+                dev_reg.async_update_device(old_device.id, new_identifiers={(DOMAIN, new_id)})
 
 
 @callback
