@@ -9,7 +9,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, ZONE_SCAN_DEVICE_SUFFIX
 
 
 class MigrateUniqueIDFlow(RepairsFlow):
@@ -74,10 +74,28 @@ class MigrateUniqueIDFlow(RepairsFlow):
             self.hass, self._config_entry_id, _async_update_unique_id
         )
 
+        # Remove the old panel device and its Zone Scan sub-device; the entities
+        # recreate both under the new unique ID when the entry reloads.
         dev_reg = dr.async_get(self.hass)
-        old_device = dev_reg.async_get_device(identifiers={(DOMAIN, old_unique_id)})
-        if old_device:
-            dev_reg.async_remove_device(old_device.id)
+        for identifier in (
+            (DOMAIN, f"{old_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}"),
+            (DOMAIN, old_unique_id),
+        ):
+            old_device = _async_get_device(dev_reg, identifier, self._config_entry_id)
+            if old_device:
+                dev_reg.async_remove_device(old_device.id)
+
+
+@callback
+def _async_get_device(
+    dev_reg: dr.DeviceRegistry, identifier: tuple[str, str], config_entry_id: str
+) -> dr.DeviceEntry | None:
+    # HA 2026.10 deprecates async_get_device (identifiers are no longer unique across
+    # config entries) in favour of async_get_device_by_identifier; async_get_device
+    # stops working in 2027.8. Older releases only have async_get_device.
+    if hasattr(dev_reg, "async_get_device_by_identifier"):
+        return dev_reg.async_get_device_by_identifier(identifier, config_entry_id)
+    return dev_reg.async_get_device(identifiers={identifier})
 
 
 async def async_create_fix_flow(
