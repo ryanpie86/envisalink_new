@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_CODE, CONF_HOST, CONF_TIMEOUT, Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
@@ -51,6 +52,7 @@ from .const import (
 )
 from .controller import EnvisalinkController
 from .helpers import generate_range_string
+from .models import panel_device_info
 from .pyenvisalink.alarm_panel import EnvisalinkAlarmPanel
 from .pyenvisalink.const import PANEL_TYPE_DSC, PANEL_TYPE_HONEYWELL
 
@@ -153,6 +155,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
     await controller.start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = controller
+
+    # Register the panel's device before the platforms so the Zone Scan
+    # sub-device can link to it by registry id.
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **panel_device_info(controller)
+    )
+    controller.device_id = device.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

@@ -47,6 +47,8 @@ class EnvisalinkController:
         """Initialize the controller for the Envisalink device."""
         self._unique_id = entry.unique_id
         self._config_entry = entry
+        # Device registry id of the alarm panel's device, set during entry setup
+        self.device_id: str | None = None
 
         # Config
         self.alarm_name = entry.title
