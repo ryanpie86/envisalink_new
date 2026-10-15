@@ -249,7 +249,7 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
         """Return the state of the device."""
         state = None
 
-        if self._info["status"]["alarm"]:
+        if self._info["status"]["alarm"] or self._is_alarm_latched():
             state = AlarmControlPanelState.TRIGGERED
         elif self._is_night_mode():
             state = AlarmControlPanelState.ARMED_NIGHT
@@ -365,6 +365,13 @@ class EnvisalinkAlarm(EnvisalinkDevice, AlarmControlPanelEntity):
             include_names=include_names,
             skip_unused_alpha=skip_unused_alpha,
         )
+
+    def _is_alarm_latched(self) -> bool:
+        # The panel drops its live alarm flag when the bell timeout expires but stays
+        # armed with the alarm held in memory until a user disarms. Keep reporting
+        # TRIGGERED for that period so the alarm isn't masked as a plain armed state.
+        status = self._info["status"]
+        return status["alarm_in_memory"] and (status["armed_away"] or status["armed_stay"])
 
     def _is_night_mode(self) -> bool:
         if self._controller.controller.panel_type == PANEL_TYPE_HONEYWELL:
