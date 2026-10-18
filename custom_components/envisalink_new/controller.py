@@ -47,6 +47,11 @@ class EnvisalinkController:
         """Initialize the controller for the Envisalink device."""
         self._unique_id = entry.unique_id
         self._config_entry = entry
+        # Device registry id of the alarm panel's device, set during entry setup
+        self.device_id: str | None = None
+        # Alarm code, set by partition 1's alarm entity once it's added to HA. Entities
+        # that need it (e.g. the chime switch) can be added first, so start with None.
+        self._default_code: str | None = None
 
         # Config
         self.alarm_name = entry.title
@@ -296,3 +301,6 @@ class EnvisalinkController:
     @default_code.setter
     def default_code(self, value):
         self._default_code = value
+        # Refresh partition 1's entities so the chime switch picks up the code now
+        # rather than on the next keypad update.
+        self._process_state_change(STATE_CHANGE_PARTITION, [1])

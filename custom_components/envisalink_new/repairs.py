@@ -9,7 +9,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, ZONE_SCAN_DEVICE_SUFFIX
 
 
 class MigrateUniqueIDFlow(RepairsFlow):
@@ -54,8 +54,8 @@ class MigrateUniqueIDFlow(RepairsFlow):
         )
 
     async def _async_update_entities(self):
-        """Update the unique ID on all the entities attached to this config entry and remove
-        the subsequently orphaned device.
+        """Update the unique ID on all the entities and devices attached to this config
+        entry.
         """
 
         old_unique_id = self.description_placeholders["old_unique_id"]
@@ -74,10 +74,38 @@ class MigrateUniqueIDFlow(RepairsFlow):
             self.hass, self._config_entry_id, _async_update_unique_id
         )
 
+        # Move the panel device and its Zone Scan sub-device to the new unique ID
+        # rather than removing them. Removing a device deletes its entities' registry
+        # entries, and HA before 2025.7 doesn't restore their settings when they're
+        # recreated; keeping the devices also keeps their ids, names and areas.
         dev_reg = dr.async_get(self.hass)
-        old_device = dev_reg.async_get_device(identifiers={(DOMAIN, old_unique_id)})
-        if old_device:
-            dev_reg.async_remove_device(old_device.id)
+        for old_id, new_id in (
+            (old_unique_id, new_unique_id),
+            (
+                f"{old_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}",
+                f"{new_unique_id}_{ZONE_SCAN_DEVICE_SUFFIX}",
+            ),
+        ):
+            old_device = _async_get_device(dev_reg, (DOMAIN, old_id), self._config_entry_id)
+            if not old_device:
+                continue
+            if _async_get_device(dev_reg, (DOMAIN, new_id), self._config_entry_id):
+                # A device already exists under the new ID, so the old one is orphaned
+                dev_reg.async_remove_device(old_device.id)
+            else:
+                dev_reg.async_update_device(old_device.id, new_identifiers={(DOMAIN, new_id)})
+
+
+@callback
+def _async_get_device(
+    dev_reg: dr.DeviceRegistry, identifier: tuple[str, str], config_entry_id: str
+) -> dr.DeviceEntry | None:
+    # HA 2026.10 deprecates async_get_device (identifiers are no longer unique across
+    # config entries) in favour of async_get_device_by_identifier; async_get_device
+    # stops working in 2027.8. Older releases only have async_get_device.
+    if hasattr(dev_reg, "async_get_device_by_identifier"):
+        return dev_reg.async_get_device_by_identifier(identifier, config_entry_id)
+    return dev_reg.async_get_device(identifiers={identifier})
 
 
 async def async_create_fix_flow(
