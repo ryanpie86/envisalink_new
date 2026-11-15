@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_CODE, CONF_HOST, CONF_TIMEOUT, Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
@@ -51,6 +52,7 @@ from .const import (
 )
 from .controller import EnvisalinkController
 from .helpers import generate_range_string
+from .models import panel_device_info
 from .pyenvisalink.alarm_panel import EnvisalinkAlarmPanel
 from .pyenvisalink.const import PANEL_TYPE_DSC, PANEL_TYPE_HONEYWELL
 
@@ -154,6 +156,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = controller
 
+    # Register the panel's device before the platforms so the Zone Scan
+    # sub-device can link to it by registry id.
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **panel_device_info(controller)
+    )
+    controller.device_id = device.id
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _async_update_panel_model_issue(hass, entry, controller.controller.panel_type)
@@ -175,7 +184,7 @@ def _async_update_panel_model_issue(
     an installer code set is a good sign zone discovery was wanted, so raise
     a Repairs notice telling the user to pick their model explicitly.
     """
-    issue_id = f"panel_model_not_selected_{entry.entry_id}"
+    issue_id = _panel_model_issue_id(entry)
     if (
         panel_type == PANEL_TYPE_HONEYWELL
         and entry.data.get(CONF_INSTALLER_CODE)
@@ -195,6 +204,10 @@ def _async_update_panel_model_issue(
         ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
+def _panel_model_issue_id(entry: config_entries.ConfigEntry) -> str:
+    return f"panel_model_not_selected_{entry.entry_id}"
+
+
 async def async_unload_entry(
     hass: HomeAssistant, entry: config_entries.ConfigEntry
 ) -> bool:
@@ -206,7 +219,20 @@ async def async_unload_entry(
 
         hass.data[DOMAIN].pop(entry.entry_id)
 
+        # Setup re-evaluates the issue, so drop it while the entry is unloaded
+        # (disabled, or about to be removed) rather than leave it pointing at
+        # an entry that can't act on it.
+        ir.async_delete_issue(hass, DOMAIN, _panel_model_issue_id(entry))
+
     return unload_ok
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry
+) -> None:
+    """Clean up after a config entry is removed."""
+    # Covers an entry removed while not loaded, where unload never ran.
+    ir.async_delete_issue(hass, DOMAIN, _panel_model_issue_id(entry))
 
 
 async def async_reload_entry(

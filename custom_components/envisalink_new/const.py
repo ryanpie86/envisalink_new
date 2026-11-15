@@ -47,7 +47,7 @@ CONF_INSTALLER_CODE = "installer_code"
 CONF_PANEL_MODEL = "panel_model"
 
 # The "Zone Scan" sub-device: a separate device (linked to the alarm panel's
-# own device via `via_device`, so it shows as its own card/bubble in the HA
+# own device via `via_device_id`, so it shows as its own card/bubble in the HA
 # UI) that holds the zone-discovery toggle switches and run button. Only
 # created for Honeywell panels whose CONF_PANEL_MODEL is in
 # PANEL_MODELS_VISTA_20P_COMPATIBLE. See models.EnvisalinkZoneScanDevice.
